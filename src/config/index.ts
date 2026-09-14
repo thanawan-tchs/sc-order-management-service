@@ -22,6 +22,10 @@ export const ITEM_WEIGHT_KG = 0.365;
 /** $0.01 per kilogram per kilometer, expressed in cents so shipping cost stays integer-cent-based. */
 export const SHIPPING_RATE_CENTS_PER_KG_KM = 1;
 
+/** Single-currency v1; stored per order (ticket 10) rather than assumed, so a multi-currency
+ *  future doesn't require a migration to add the column. */
+export const CURRENCY = "USD";
+
 export const SEED_WAREHOUSES = [
   { name: "Los Angeles", latitude: 33.9425, longitude: -118.408056, stock: 355 },
   { name: "New York", latitude: 40.639722, longitude: -73.778889, stock: 578 },

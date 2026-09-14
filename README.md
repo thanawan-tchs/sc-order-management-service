@@ -2,9 +2,10 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–09 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–10 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
-> warehouse allocation, order quote application service, `POST /v1/orders/quote`). See
+> warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
+> persistence & order numbers). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -83,7 +84,11 @@ src/
                         # (subtotal/discount), distance.ts (Haversine), shipping.ts (per-allocation
                         # cost + multi-warehouse sum), allocation.ts (greedy lowest-cost
                         # multi-warehouse fulfillment), and validity.ts (the 15% shipping-cost rule).
-  repositories/        # warehouseRepository — warehouse + inventory data access
+  repositories/        # warehouseRepository (warehouse + inventory data access) and
+                        # orderRepository (ticket 10: persists an already-computed OrderQuote as
+                        # an Order + its allocations, generates a unique order number). Pure
+                        # persistence — no validation, no inventory writes; the atomic
+                        # decrement-and-submit flow is a later ticket.
   infrastructure/
     db/                # pg Pool, schema (DDL), migrate, seed
   middleware/          # validateBody — generic Koa validation middleware, reused by every
@@ -126,6 +131,16 @@ curl -X POST http://localhost:3000/v1/orders/quote \
   WHERE stock >= $1` statement — atomic by construction, so concurrent deductions can never oversell
   a warehouse's stock without needing an explicit transaction/row lock (verified by a concurrency
   test in `tests/repositories/warehouseRepository.test.ts`).
+- **Order numbers**: generated from a standalone Postgres sequence (`order_number_seq`), whose
+  `nextval()` is atomic under concurrent callers with no application-level locking — verified by a
+  25-concurrent-creation test in `tests/repositories/orderRepository.test.ts`. Formatted as
+  `ORD-<7-digit sequence value>`; also enforced `UNIQUE` at the schema level as a backstop.
+- **Snapshot principle**: `orderRepository.createOrder` persists exactly the `OrderQuote` it's
+  given — it never recalculates pricing/discount/shipping, so a later change to discount tiers or
+  the shipping rate can't retroactively alter a historical order (ticket 10). Every repository
+  function accepts an optional `executor` (a pool or an already-checked-out transaction client),
+  so a later ticket's atomic submit flow can run inventory decrements and order creation in one
+  transaction without duplicating queries.
 - **v1 scope**: `inventory` is keyed by warehouse only (no item column) — there's exactly one SKU
   for v1. The domain-level `Inventory` type still carries an `itemId` (`DEFAULT_ITEM_ID`) for
   forward compatibility if multi-SKU support is added later.

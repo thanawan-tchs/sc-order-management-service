@@ -11,6 +11,14 @@ export const config = {
  */
 export const DEFAULT_ITEM_ID = 1;
 
+/**
+ * The single v1 SKU's price/weight. Business constants, not DB-backed (ticket 04 treats them as
+ * pure inputs to pricing logic; ticket 06/07 will reuse ITEM_WEIGHT_KG the same way for shipping
+ * cost) — kept here once so both consumers reference the same numbers.
+ */
+export const ITEM_UNIT_PRICE_CENTS = 15000; // $150.00
+export const ITEM_WEIGHT_KG = 0.365;
+
 export const SEED_WAREHOUSES = [
   { name: "Los Angeles", latitude: 33.9425, longitude: -118.408056, stock: 355 },
   { name: "New York", latitude: 40.639722, longitude: -73.778889, stock: 578 },

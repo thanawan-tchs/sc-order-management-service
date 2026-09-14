@@ -2,9 +2,10 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–03 (project bootstrap, domain models & request validation, warehouse/inventory
-> repository). See [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/)
-> for the full system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
+> Status: Tickets 01–04 (project bootstrap, domain models & request validation, warehouse/inventory
+> repository, pricing & volume discount). See
+> [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
+> system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
 ## Requirements
 
@@ -72,8 +73,9 @@ src/
   controllers/        # thin HTTP handlers — no business logic
   application/        # (empty — application/use-case services land in later tickets)
   domain/              # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...),
-                        # request validation schemas (zod), and domain error types.
-                        # Pricing/shipping/allocation logic itself lands in later tickets.
+                        # request validation schemas (zod), domain error types, and pricing.ts
+                        # (subtotal/discount — the shared pricing service). Shipping/allocation
+                        # logic itself lands in later tickets.
   repositories/        # warehouseRepository — warehouse + inventory data access
   infrastructure/
     db/                # pg Pool, schema (DDL), migrate, seed

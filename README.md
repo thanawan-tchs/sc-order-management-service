@@ -2,9 +2,9 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–08 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–09 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
-> warehouse allocation, order quote application service). See
+> warehouse allocation, order quote application service, `POST /v1/orders/quote`). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -50,7 +50,7 @@ npm start
 ## Test
 
 Requires Postgres running (`npm run db:up`) — the integration suite exercises the repository
-layer against the real `orders_test` database.
+layer, and the full HTTP API, against the real `orders_test` database.
 
 ```bash
 npm test          # run once
@@ -70,8 +70,10 @@ npm run typecheck
 src/
   app.ts              # builds the Koa app (no listen()) — importable by tests
   server.ts           # runtime entrypoint: migrate -> seed -> listen
-  routes/             # route definitions, mounted onto the root router
-  controllers/        # thin HTTP handlers — no business logic
+  routes/             # route definitions: /health (unversioned), /v1/orders/* (versioned API)
+  controllers/        # thin HTTP handlers — parse/validate (via middleware) -> call an
+                        # application service -> map its result to the HTTP response. No
+                        # pricing/allocation logic lives here.
   application/         # orderQuoteService — the full side-effect-free quote flow (ticket 08):
                         # read stock -> price -> allocate -> check the 15% rule -> return a quote.
                         # No HTTP, no order/inventory writes. The submit service (a later ticket)
@@ -95,6 +97,26 @@ tests/
 
 `app.ts` is kept separate from `server.ts` specifically so the Koa app can be imported and exercised
 in tests (via `supertest`) without binding a real port.
+
+### API
+
+`POST /v1/orders/quote` — verify a potential order (price, discount, shipping, validity) with no
+side effects. `200` with `valid: false` and an `invalidReason` (`"INSUFFICIENT_STOCK"` or
+`"SHIPPING_COST_EXCEEDS_15_PERCENT"`) for a business-invalid order; `400` only for a malformed
+request body.
+
+```bash
+curl -X POST http://localhost:3000/v1/orders/quote \
+  -H "Content-Type: application/json" \
+  -d '{"quantity": 50, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+```
+
+### Testing notes
+
+- Multiple test files share one real Postgres `orders_test` database, each resetting it in
+  `beforeEach` (`tests/helpers/db.ts`). Vitest's default is to run test *files* in parallel, which
+  let two files' resets/queries race each other against those shared tables — `vitest.config.ts`
+  sets `fileParallelism: false` to serialize file execution and remove that race.
 
 ### Database
 

@@ -1,6 +1,6 @@
 import { CURRENCY, ITEM_WEIGHT_KG } from "../config";
 import { toMoney } from "../domain/money";
-import { Order, OrderQuote, ShippingAllocation } from "../domain/types";
+import { Order, OrderQuote, OrderStatus, ShippingAllocation } from "../domain/types";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
 
 interface OrderRow {
@@ -15,6 +15,7 @@ interface OrderRow {
   amount_after_discount_cents: number;
   shipping_cents: number;
   total_cents: number;
+  status: OrderStatus;
   created_at: Date;
 }
 
@@ -55,6 +56,7 @@ function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
     invalidReasons: [],
     allocations,
     orderNumber: row.order_number,
+    status: row.status,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -81,6 +83,8 @@ async function generateOrderNumber(executor: QueryExecutor): Promise<string> {
  * Accepts an optional `executor` (see infrastructure/db/pool.ts's `QueryExecutor`) so ticket 11
  * can run this inside the same transaction as its inventory decrements.
  */
+const INITIAL_ORDER_STATUS: OrderStatus = "CONFIRMED";
+
 export async function createOrder(quote: OrderQuote, executor: QueryExecutor = getPool()): Promise<Order> {
   const orderNumber = await generateOrderNumber(executor);
 
@@ -89,7 +93,7 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
        order_number, quantity, destination_latitude, destination_longitude,
        subtotal_cents, discount_rate, discount_cents, amount_after_discount_cents,
        shipping_cents, total_cents, currency, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'submitted')
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING id, created_at`,
     [
       orderNumber,
@@ -103,6 +107,7 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
       quote.shippingCostCents,
       quote.totalCents,
       CURRENCY,
+      INITIAL_ORDER_STATUS,
     ]
   );
   const { id: orderId, created_at: createdAt } = rows[0];
@@ -118,6 +123,7 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
   return {
     ...quote,
     orderNumber,
+    status: INITIAL_ORDER_STATUS,
     createdAt: createdAt.toISOString(),
   };
 }
@@ -129,7 +135,7 @@ export async function getOrderByNumber(
   const { rows } = await executor.query<OrderRow>(
     `SELECT id, order_number, quantity, destination_latitude, destination_longitude,
             subtotal_cents, discount_rate, discount_cents, amount_after_discount_cents,
-            shipping_cents, total_cents, created_at
+            shipping_cents, total_cents, status, created_at
      FROM orders WHERE order_number = $1`,
     [orderNumber]
   );

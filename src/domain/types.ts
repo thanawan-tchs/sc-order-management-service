@@ -56,8 +56,14 @@ export interface OrderQuote {
   allocations: ShippingAllocation[];
 }
 
+/** Only one status exists today (an order that reaches persistence was already validated at
+ *  submission time, ticket 11) — kept as its own type so a future lifecycle (shipped, cancelled,
+ *  ...) is additive, not a breaking change to `Order`. */
+export type OrderStatus = "CONFIRMED";
+
 /** A persisted, submitted order — a quote plus the identifiers/metadata that exist once saved. */
 export interface Order extends OrderQuote {
   orderNumber: string;
+  status: OrderStatus;
   createdAt: string;
 }

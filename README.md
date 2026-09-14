@@ -2,10 +2,10 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–11 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–12 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
-> persistence & order numbers, atomic order submission). See
+> persistence & order numbers, atomic order submission, `POST /v1/orders`). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -72,9 +72,11 @@ src/
   app.ts              # builds the Koa app (no listen()) — importable by tests
   server.ts           # runtime entrypoint: migrate -> seed -> listen
   routes/             # route definitions: /health (unversioned), /v1/orders/* (versioned API)
-  controllers/        # thin HTTP handlers — parse/validate (via middleware) -> call an
-                        # application service -> map its result to the HTTP response. No
-                        # pricing/allocation logic lives here.
+  controllers/        # one file per controller: orderQuote.controller.ts, orderSubmission.
+                        # controller.ts, health.controller.ts. Each handler: parse/validate (via
+                        # middleware) -> call an application service -> map its result (and, for
+                        # submit, its thrown error type) to the HTTP response. No pricing/
+                        # allocation logic lives here.
   application/         # orderQuoteService (ticket 08) — side-effect-free quote flow: read stock
                         # -> price -> allocate -> check the 15% rule -> return a quote. No HTTP,
                         # no writes. orderSubmissionService (ticket 11) — the same calculation,
@@ -122,9 +124,19 @@ curl -X POST http://localhost:3000/v1/orders/quote \
   -d '{"quantity": 50, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
 ```
 
-`orderSubmissionService.submitOrder` (ticket 11) is the atomic-submission service — recalculates
-and persists an order, decrementing inventory in the same transaction. Not yet wired to an HTTP
-route (that's `POST /v1/orders`, a later ticket); call it directly for now.
+`POST /v1/orders` — submit an order (ticket 12). Recalculates everything server-side from
+`quantity`/`shippingAddress` only — any other field in the request body (a price, a discount, an
+allocation) is silently ignored, never trusted. `201` on success; `422` (`ORDER_INVALID`) when the
+recalculated order fails a business rule (insufficient stock and/or shipping over 15%); `409`
+(`INVENTORY_CONFLICT`) when a concurrent submission wins a race for the same stock after this one
+was otherwise valid — a transient, retry-friendly conflict, distinct from `422`'s durable
+rejection; `400` for a malformed request body.
+
+```bash
+curl -X POST http://localhost:3000/v1/orders \
+  -H "Content-Type: application/json" \
+  -d '{"quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+```
 
 ### Testing notes
 

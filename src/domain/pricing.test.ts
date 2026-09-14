@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ITEM_UNIT_PRICE_CENTS } from "../../src/config";
+import { ITEM_UNIT_PRICE_CENTS } from "../config";
 import {
   calculateAmountAfterDiscount,
   calculateDiscount,
   calculateSubtotal,
   getDiscountRate,
-} from "../../src/domain/pricing";
+} from "./pricing";
 
 describe("calculateSubtotal", () => {
   it("multiplies quantity by the unit price ($150 = 15000 cents)", () => {

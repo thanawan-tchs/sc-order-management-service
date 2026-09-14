@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { submitOrder } from "../../src/application/orderSubmissionService";
-import { IdempotencyKeyReusedError, InsufficientStockError, OrderSubmissionError } from "../../src/domain/errors";
-import { closePool, getPool } from "../../src/infrastructure/db/pool";
-import { findOrderByIdempotencyKey, getOrderByNumber } from "../../src/repositories/orderRepository";
-import { getInventory } from "../../src/repositories/warehouseRepository";
-import { resetTestDb } from "../helpers/db";
-import { pointAtDistanceFrom } from "../helpers/geo";
+import { submitOrder } from "./orderSubmissionService";
+import { IdempotencyKeyReusedError, InsufficientStockError, OrderSubmissionError } from "../domain/errors";
+import { closePool, getPool } from "../infrastructure/db/pool";
+import { findOrderByIdempotencyKey, getOrderByNumber } from "../repositories/orderRepository";
+import { getInventory } from "../repositories/warehouseRepository";
+import { resetTestDb } from "../../tests/helpers/db";
+import { pointAtDistanceFrom } from "../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 const LOS_ANGELES_ID = 1;

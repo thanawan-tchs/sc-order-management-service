@@ -1,10 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { getOrder } from "../../src/application/getOrderService";
-import { toMoney } from "../../src/domain/money";
-import { OrderQuote } from "../../src/domain/types";
-import { closePool } from "../../src/infrastructure/db/pool";
-import { createOrder } from "../../src/repositories/orderRepository";
-import { resetTestDb } from "../helpers/db";
+import { getOrder } from "./getOrderService";
+import { toMoney } from "../domain/money";
+import { OrderQuote } from "../domain/types";
+import { closePool } from "../infrastructure/db/pool";
+import { createOrder } from "../repositories/orderRepository";
+import { resetTestDb } from "../../tests/helpers/db";
 
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;

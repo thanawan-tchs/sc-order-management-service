@@ -1,15 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { IdempotencyKeyConflictError } from "../../src/domain/errors";
-import { toMoney } from "../../src/domain/money";
-import { OrderQuote } from "../../src/domain/types";
-import { closePool } from "../../src/infrastructure/db/pool";
+import { IdempotencyKeyConflictError } from "../domain/errors";
+import { toMoney } from "../domain/money";
+import { OrderQuote } from "../domain/types";
+import { closePool } from "../infrastructure/db/pool";
 import {
   createOrder,
   findOrderByIdempotencyKey,
   getOrderByNumber,
   recordIdempotencyKey,
-} from "../../src/repositories/orderRepository";
-import { resetTestDb } from "../helpers/db";
+} from "./orderRepository";
+import { resetTestDb } from "../../tests/helpers/db";
 
 // Seed order is fixed and resetTestDb() restarts identities, so these are reliably stable.
 const LOS_ANGELES_ID = 1;

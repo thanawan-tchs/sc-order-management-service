@@ -1,14 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { SEED_WAREHOUSES } from "../../src/config";
-import { InsufficientStockError } from "../../src/domain/errors";
-import { closePool, getPool } from "../../src/infrastructure/db/pool";
+import { SEED_WAREHOUSES } from "../config";
+import { InsufficientStockError } from "../domain/errors";
+import { closePool, getPool } from "../infrastructure/db/pool";
 import {
   decrementInventory,
   getAllWarehouses,
   getInventory,
   getWarehouse,
-} from "../../src/repositories/warehouseRepository";
-import { resetTestDb } from "../helpers/db";
+} from "./warehouseRepository";
+import { resetTestDb } from "../../tests/helpers/db";
 
 // Seed order is fixed and RESTART IDENTITY resets ids to 1..6 on each reset, so "Los Angeles" is
 // reliably warehouse id 1 with its seed stock of 355.

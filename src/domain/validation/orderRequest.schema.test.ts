@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { orderRequestSchema } from "../../src/domain/validation/orderRequest.schema";
+import { orderRequestSchema } from "./orderRequest.schema";
 
 const validAddress = { latitude: 40.7128, longitude: -74.006 };
 

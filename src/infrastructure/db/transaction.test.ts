@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { closePool, getPool } from "../../../src/infrastructure/db/pool";
-import { withTransaction } from "../../../src/infrastructure/db/transaction";
-import { getInventory, decrementInventory } from "../../../src/repositories/warehouseRepository";
-import { resetTestDb } from "../../helpers/db";
+import { closePool, getPool } from "./pool";
+import { withTransaction } from "./transaction";
+import { getInventory, decrementInventory } from "../../repositories/warehouseRepository";
+import { resetTestDb } from "../../../tests/helpers/db";
 
 const LOS_ANGELES_ID = 1;
 const LOS_ANGELES_STOCK = 355;

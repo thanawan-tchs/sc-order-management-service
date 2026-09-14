@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getOrderQuote, OrderQuoteDependencies } from "../../src/application/orderQuoteService";
-import { ITEM_WEIGHT_KG } from "../../src/config";
-import { WarehouseCandidate } from "../../src/domain/allocation";
-import { pointAtDistanceFromOrigin } from "../helpers/geo";
+import { getOrderQuote, OrderQuoteDependencies } from "./orderQuoteService";
+import { ITEM_WEIGHT_KG } from "../config";
+import { WarehouseCandidate } from "../domain/allocation";
+import { pointAtDistanceFromOrigin } from "../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 

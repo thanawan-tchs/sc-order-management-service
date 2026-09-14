@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { allocateOrder, WarehouseCandidate } from "../../src/domain/allocation";
-import { calculateShippingCost } from "../../src/domain/shipping";
-import { pointAtDistanceFromOrigin } from "../helpers/geo";
+import { allocateOrder, WarehouseCandidate } from "./allocation";
+import { calculateShippingCost } from "./shipping";
+import { pointAtDistanceFromOrigin } from "../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 

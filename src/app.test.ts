@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
 import Koa from "koa";
-import { createApp } from "../src/app";
+import { createApp } from "./app";
 
 describe("app bootstrap", () => {
   it("boots and returns a usable Koa application", () => {

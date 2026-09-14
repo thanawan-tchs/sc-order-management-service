@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import Koa, { Context } from "koa";
 import Router from "@koa/router";
 import request from "supertest";
-import { OrderNotFoundError, ValidationError } from "../../src/domain/errors";
-import { errorHandler } from "../../src/middleware/errorHandler";
+import { OrderNotFoundError, ValidationError } from "../domain/errors";
+import { errorHandler } from "./errorHandler";
 
 function buildApp(handler: (ctx: Context) => void | Promise<void>): Koa {
   const app = new Koa();

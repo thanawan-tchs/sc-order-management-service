@@ -4,5 +4,10 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Unit/service/repository/middleware tests now live next to their source file (co-located
+  // *.test.ts) — excluded here so the production build never compiles test code (which imports
+  // vitest/supertest, devDependencies not expected to exist in a production install) into dist/.
+  // tsconfig.json (typecheck) still includes them; only the build output excludes them.
+  "exclude": ["src/**/*.test.ts"]
 }

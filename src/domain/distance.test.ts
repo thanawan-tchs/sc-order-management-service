@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Coordinates, EARTH_RADIUS_KM, calculateDistanceKm } from "../../src/domain/distance";
+import { Coordinates, EARTH_RADIUS_KM, calculateDistanceKm } from "./distance";
 
 /**
  * Independent reference implementation (spherical law of cosines) used only to cross-check the

@@ -2,11 +2,12 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–15 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–16 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
 > persistence & order numbers, atomic order submission, `POST /v1/orders`, idempotency &
-> concurrency protection, `GET /v1/orders/:orderNumber`, centralized API error handling). See
+> concurrency protection, `GET /v1/orders/:orderNumber`, centralized API error handling, test
+> strategy & CI). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -57,7 +58,12 @@ layer, and the full HTTP API, against the real `orders_test` database.
 ```bash
 npm test          # run once
 npm run test:watch
+npm run coverage   # same suite, with a v8 coverage report over src/
 ```
+
+CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint`, `build`, and `test` on every push and
+pull request, against a `postgres:16-alpine` service container — the same recipe as local dev,
+just on port 5432 (free in a clean runner) instead of 5433.
 
 ## Lint & typecheck
 
@@ -110,8 +116,15 @@ src/
                         # rather than shaping a response itself, same as every other layer.
   config/              # environment/config loading, seed data
   utils/                # (empty — shared helpers as needed)
+  **/*.test.ts          # unit/service/repository/middleware tests, co-located next to the file
+                        # they test (e.g. domain/pricing.ts + domain/pricing.test.ts) — see "Test
+                        # strategy" below
 tests/
+  integration/          # HTTP-level tests spanning multiple files/whole endpoints — the only
+                        # tests that don't have one single src/ file to live next to
   helpers/db.ts         # resetTestDb() — migrate + truncate + reseed, used in beforeEach
+  helpers/geo.ts         # places a point at an exact distance from an origin, for hand-verifiable
+                        # allocation/shipping-cost fixtures
   setupEnv.ts            # points DATABASE_URL at the test DB before any test file loads
 ```
 
@@ -187,12 +200,54 @@ services never set `ctx.status`/`ctx.body` for a failure themselves, they just t
 `AppError` subclass (`src/domain/errors.ts`) and let it propagate. `errorHandler` is registered
 first in `app.ts` so Koa's onion model wraps every other middleware inside its `try/catch`.
 
-### Testing notes
+### Test strategy (ticket 16)
 
+Unit/service/repository/middleware tests are **co-located** next to the file they test (e.g.
+`src/domain/pricing.ts` + `src/domain/pricing.test.ts`, right beside it) — only true integration
+tests (an HTTP flow spanning many files, not one function) live separately, under
+`tests/integration/`. `vitest.config.ts`'s `include` picks up both `src/**/*.test.ts` and
+`tests/**/*.test.ts`; `tsconfig.build.json` explicitly excludes `src/**/*.test.ts` so none of it
+ends up in the production build.
+
+- **Unit tests** (`src/domain/*.test.ts`) — every pure business-logic module in isolation, no
+  database, no HTTP: volume discount (`pricing.test.ts`), Haversine distance
+  (`distance.test.ts`), shipping cost (`shipping.test.ts`), warehouse allocation
+  (`allocation.test.ts`), the 15% validity rule (`validity.test.ts`), plus `money.test.ts` and
+  `validation/orderRequest.schema.test.ts`. These are the cheapest, fastest, highest-signal tests
+  in the suite — `npm run coverage` currently reports **100% line/statement coverage on every
+  file in `src/domain/`** (99.4% overall across all of `src/`; the only gaps are defensive guards
+  for conditions that can't occur given how the code is actually called — e.g.
+  `decrementInventory` rejecting a non-positive quantity no internal caller would ever pass — not
+  gaps in tested *behavior*).
+- **Repository/service/middleware tests** (`src/repositories/*.test.ts`,
+  `src/application/*.test.ts`, `src/middleware/*.test.ts`, `src/infrastructure/db/*.test.ts`) —
+  real Postgres, exercising transaction/concurrency/persistence behavior directly (e.g. the
+  concurrent-decrement and rollback-of-an-earlier-successful-write tests) without the overhead of
+  going through HTTP for every case.
+- **Integration tests** (`tests/integration/`) — full HTTP requests (`supertest`) against all
+  three endpoints, backed by the real database. `orderLifecycle.api.test.ts` specifically chains
+  quote -> submit -> get for the same request across every discount-tier boundary quantity (1, 24,
+  25, 49, 50, 99, 100, 249, 250), asserting the three responses agree with each other — not just
+  that each endpoint works in isolation.
+- All 18 of the ticket's named critical scenarios are covered: the 9 boundary quantities above;
+  single- and multi-warehouse fulfillment; insufficient stock; shipping exactly at 15% (both at
+  the domain level, `validity.test.ts`, and through real HTTP requests,
+  `orderLifecycle.api.test.ts`) and above it; concurrent inventory deductions
+  (`warehouseRepository.test.ts`, `orderSubmissionService.test.ts`); transaction rollback
+  (`transaction.test.ts` proves the general mechanism, `orderSubmissionService.test.ts` proves it
+  for a multi-line order where an earlier line's decrement had already "succeeded"); idempotent
+  retry, concurrent retry, and mismatched-key reuse (tickets 13/15's tests); and the historical
+  price snapshot surviving a simulated pricing-rule change (`orderRepository.test.ts`,
+  `getOrderService.test.ts`, `getOrder.api.test.ts`).
 - Multiple test files share one real Postgres `orders_test` database, each resetting it in
   `beforeEach` (`tests/helpers/db.ts`). Vitest's default is to run test *files* in parallel, which
   let two files' resets/queries race each other against those shared tables — `vitest.config.ts`
   sets `fileParallelism: false` to serialize file execution and remove that race.
+- Determinism: no test depends on wall-clock timing to pass. Where a scenario is inherently
+  timing-sensitive (two submissions racing for the same stock or idempotency key), the test
+  asserts the *outcome* (final stock, exactly one order created) rather than which of two valid
+  code paths produced it — see the comments in `orderSubmissionService.test.ts`'s concurrency
+  tests for why a real-database race can validly resolve either way run to run.
 
 ### Database
 
@@ -201,10 +256,10 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
 - **Concurrency**: `warehouseRepository.decrementInventory` uses a single guarded `UPDATE ...
   WHERE stock >= $1` statement — atomic by construction, so concurrent deductions can never oversell
   a warehouse's stock without needing an explicit transaction/row lock (verified by a concurrency
-  test in `tests/repositories/warehouseRepository.test.ts`).
+  test in `src/repositories/warehouseRepository.test.ts`).
 - **Order numbers**: generated from a standalone Postgres sequence (`order_number_seq`), whose
   `nextval()` is atomic under concurrent callers with no application-level locking — verified by a
-  25-concurrent-creation test in `tests/repositories/orderRepository.test.ts`. Formatted as
+  25-concurrent-creation test in `src/repositories/orderRepository.test.ts`. Formatted as
   `ORD-<7-digit sequence value>`; also enforced `UNIQUE` at the schema level as a backstop.
 - **Snapshot principle**: `orderRepository.createOrder` persists exactly the `OrderQuote` it's
   given — it never recalculates pricing/discount/shipping, so a later change to discount tiers or
@@ -220,8 +275,8 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
   same stock (a guarded decrement affecting 0 rows), the whole transaction rolls back — including
   any decrements already applied earlier in the same call — so a failed submission never leaves
   partial inventory changes or an orphaned order row. Verified against a real database in
-  `tests/application/orderSubmissionService.test.ts` (single/multi-warehouse success, insufficient
-  stock, shipping >15%, concurrent conflicts) and `tests/infrastructure/db/transaction.test.ts`
+  `src/application/orderSubmissionService.test.ts` (single/multi-warehouse success, insufficient
+  stock, shipping >15%, concurrent conflicts) and `src/infrastructure/db/transaction.test.ts`
   (the rollback mechanism itself, isolated from order-specific logic).
 - **Idempotency** (ticket 13): an `idempotency_keys` table (`key TEXT PRIMARY KEY`, `order_number`
   referencing `orders`) maps a client's `Idempotency-Key` to the order it produced.
@@ -234,8 +289,8 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
   claim commits first wins; the loser's whole transaction rolls back (including its own inventory
   decrements) and `orderSubmissionService.submitOrder` transparently returns the winner's order
   instead of erroring — both callers see the same successful result. Verified in
-  `tests/repositories/orderRepository.test.ts` (the constraint itself),
-  `tests/application/orderSubmissionService.test.ts`, and
+  `src/repositories/orderRepository.test.ts` (the constraint itself),
+  `src/application/orderSubmissionService.test.ts`, and
   `tests/integration/orderSubmission.api.test.ts` (sequential replay, concurrent same-key racing,
   and a failed attempt not blocking a later retry with the same key).
 - **v1 scope**: `inventory` is keyed by warehouse only (no item column) — there's exactly one SKU

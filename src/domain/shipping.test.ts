@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM } from "../../src/config";
-import { calculateShippingCost, sumShippingCosts } from "../../src/domain/shipping";
+import { ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM } from "../config";
+import { calculateShippingCost, sumShippingCosts } from "./shipping";
 
 describe("calculateShippingCost", () => {
   it("is zero at zero distance, regardless of quantity", () => {

@@ -2,11 +2,11 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–13 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–14 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
 > persistence & order numbers, atomic order submission, `POST /v1/orders`, idempotency &
-> concurrency protection). See
+> concurrency protection, `GET /v1/orders/:orderNumber`). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -74,17 +74,19 @@ src/
   server.ts           # runtime entrypoint: migrate -> seed -> listen
   routes/             # route definitions: /health (unversioned), /v1/orders/* (versioned API)
   controllers/        # one file per controller: orderQuote.controller.ts, orderSubmission.
-                        # controller.ts, health.controller.ts. Each handler: parse/validate (via
-                        # middleware) -> call an application service -> map its result (and, for
-                        # submit, its thrown error type) to the HTTP response. No pricing/
-                        # allocation logic lives here.
+                        # controller.ts, getOrder.controller.ts, health.controller.ts. Each
+                        # handler: parse/validate (via middleware) -> call an application service
+                        # -> map its result (and, for submit, its thrown error type) to the HTTP
+                        # response. No pricing/allocation logic lives here.
   application/         # orderQuoteService (ticket 08) — side-effect-free quote flow: read stock
                         # -> price -> allocate -> check the 15% rule -> return a quote. No HTTP,
                         # no writes. orderSubmissionService (ticket 11) — the same calculation,
                         # reused as-is (readWarehouseCandidates + getOrderQuote), but run inside a
                         # single DB transaction and, only if the result is valid, followed by the
                         # inventory decrements + order creation, all through that same
-                        # transaction's client. See "Database" below for how atomicity works.
+                        # transaction's client (see "Database" below for how atomicity works).
+                        # getOrderService (ticket 14) — thin read-only wrapper over
+                        # orderRepository.getOrderByNumber; never recalculates anything.
   domain/              # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...),
                         # request validation schemas (zod), domain error types (including
                         # OrderSubmissionError), pricing.ts (subtotal/discount), distance.ts
@@ -149,6 +151,15 @@ curl -X POST http://localhost:3000/v1/orders \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: <client-generated-uuid>" \
   -d '{"quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+```
+
+`GET /v1/orders/:orderNumber` — retrieve a previously submitted order (ticket 14). Returns exactly
+the persisted calculation snapshot; never recalculates pricing, distance, or discount, so the
+order's numbers don't shift even if the business's current rates change after it was placed. `200`
+when found, `404` (`ORDER_NOT_FOUND`) otherwise.
+
+```bash
+curl http://localhost:3000/v1/orders/ORD-0000001
 ```
 
 ### Testing notes

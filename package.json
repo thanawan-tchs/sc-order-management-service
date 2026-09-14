@@ -17,7 +17,8 @@
   "dependencies": {
     "@koa/router": "^13.1.0",
     "koa": "^2.15.4",
-    "koa-bodyparser": "^4.4.1"
+    "koa-bodyparser": "^4.4.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/koa": "^2.15.0",

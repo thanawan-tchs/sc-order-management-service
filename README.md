@@ -2,7 +2,7 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa.
 
-> Status: Ticket 01 (project bootstrap) only. See
+> Status: Tickets 01–02 (project bootstrap, domain models & request validation). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -61,10 +61,13 @@ src/
   routes/           # route definitions, mounted onto the root router
   controllers/       # thin HTTP handlers — no business logic
   application/       # (empty — application/use-case services land in later tickets)
-  domain/             # (empty — pricing/shipping/allocation logic lands in later tickets)
+  domain/             # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...)
+                      # and request validation schemas (zod). Pricing/shipping/allocation
+                      # logic itself lands in later tickets.
   repositories/       # (empty — data access lands in later tickets)
   infrastructure/     # (empty — DB/external clients land in later tickets)
-  middleware/         # (empty — error handling etc. lands in later tickets)
+  middleware/         # validateBody — generic Koa validation middleware, reused by every
+                      # write endpoint. Error-handling middleware lands in a later ticket.
   config/             # environment/config loading
   utils/              # (empty — shared helpers as needed)
 tests/

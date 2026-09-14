@@ -9,6 +9,7 @@ import {
 } from "../domain/pricing";
 import { OrderQuote, ShippingAddress } from "../domain/types";
 import { InvalidOrderReason, isShippingCostWithinLimit } from "../domain/validity";
+import { QueryExecutor, getPool } from "../infrastructure/db/pool";
 import { getAllWarehouses, getInventory } from "../repositories/warehouseRepository";
 
 export interface OrderQuoteInput {
@@ -21,17 +22,34 @@ export interface OrderQuoteInput {
  * "Read current inventory" step of ticket 08's flow. Goes through the repository layer (ticket
  * 03); wrapped as its own function so it can be swapped out in tests (see `getOrderQuote`'s
  * `deps` parameter) without needing a live database for every orchestration test case.
+ *
+ * Accepts an optional `executor` (default: the shared pool) so ticket 11's atomic submission can
+ * run this same read inside its own transaction — the "recalculate inside BEGIN...COMMIT" step —
+ * instead of duplicating this query.
+ *
+ * The per-warehouse `getInventory` calls run sequentially, not via `Promise.all`: a `Pool`
+ * happily serves concurrent queries (each gets its own connection), but `executor` here can also
+ * be a single transactional `PoolClient` (ticket 11) — one physical connection, which can only
+ * run one query at a time. Firing concurrent `.query()` calls on the same client is deprecated in
+ * `pg` for exactly this reason. Six sequential round-trips is not worth the risk to save.
  */
-export async function readWarehouseCandidates(): Promise<WarehouseCandidate[]> {
-  const warehouses = await getAllWarehouses();
-  const inventories = await Promise.all(warehouses.map((warehouse) => getInventory(warehouse.id)));
+export async function readWarehouseCandidates(
+  executor: QueryExecutor = getPool()
+): Promise<WarehouseCandidate[]> {
+  const warehouses = await getAllWarehouses(executor);
 
-  return warehouses.map((warehouse, index) => ({
-    warehouseId: warehouse.id,
-    latitude: warehouse.latitude,
-    longitude: warehouse.longitude,
-    stock: inventories[index]?.stock ?? 0,
-  }));
+  const candidates: WarehouseCandidate[] = [];
+  for (const warehouse of warehouses) {
+    const inventory = await getInventory(warehouse.id, executor);
+    candidates.push({
+      warehouseId: warehouse.id,
+      latitude: warehouse.latitude,
+      longitude: warehouse.longitude,
+      stock: inventory?.stock ?? 0,
+    });
+  }
+
+  return candidates;
 }
 
 export interface OrderQuoteDependencies {

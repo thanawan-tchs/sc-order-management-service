@@ -2,10 +2,10 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–10 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–11 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
-> persistence & order numbers). See
+> persistence & order numbers, atomic order submission). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -75,22 +75,28 @@ src/
   controllers/        # thin HTTP handlers — parse/validate (via middleware) -> call an
                         # application service -> map its result to the HTTP response. No
                         # pricing/allocation logic lives here.
-  application/         # orderQuoteService — the full side-effect-free quote flow (ticket 08):
-                        # read stock -> price -> allocate -> check the 15% rule -> return a quote.
-                        # No HTTP, no order/inventory writes. The submit service (a later ticket)
-                        # will reuse the same domain calculators for its own recompute-then-write.
+  application/         # orderQuoteService (ticket 08) — side-effect-free quote flow: read stock
+                        # -> price -> allocate -> check the 15% rule -> return a quote. No HTTP,
+                        # no writes. orderSubmissionService (ticket 11) — the same calculation,
+                        # reused as-is (readWarehouseCandidates + getOrderQuote), but run inside a
+                        # single DB transaction and, only if the result is valid, followed by the
+                        # inventory decrements + order creation, all through that same
+                        # transaction's client. See "Database" below for how atomicity works.
   domain/              # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...),
-                        # request validation schemas (zod), domain error types, pricing.ts
-                        # (subtotal/discount), distance.ts (Haversine), shipping.ts (per-allocation
-                        # cost + multi-warehouse sum), allocation.ts (greedy lowest-cost
-                        # multi-warehouse fulfillment), and validity.ts (the 15% shipping-cost rule).
-  repositories/        # warehouseRepository (warehouse + inventory data access) and
-                        # orderRepository (ticket 10: persists an already-computed OrderQuote as
-                        # an Order + its allocations, generates a unique order number). Pure
-                        # persistence — no validation, no inventory writes; the atomic
-                        # decrement-and-submit flow is a later ticket.
+                        # request validation schemas (zod), domain error types (including
+                        # OrderSubmissionError), pricing.ts (subtotal/discount), distance.ts
+                        # (Haversine), shipping.ts (per-allocation cost + multi-warehouse sum),
+                        # allocation.ts (greedy lowest-cost multi-warehouse fulfillment), and
+                        # validity.ts (the 15% shipping-cost rule).
+  repositories/        # warehouseRepository (warehouse + inventory data access, incl.
+                        # decrementInventory) and orderRepository (ticket 10: persists an
+                        # already-computed OrderQuote as an Order + its allocations, generates a
+                        # unique order number). Every function takes an optional `executor` (pool
+                        # or an already-checked-out transaction client) so ticket 11 can run
+                        # several of these calls as one atomic unit.
   infrastructure/
-    db/                # pg Pool, schema (DDL), migrate, seed
+    db/                # pg Pool, schema (DDL), migrate, seed, and transaction.ts's
+                        # withTransaction() — BEGIN/COMMIT/ROLLBACK wrapper used by ticket 11
   middleware/          # validateBody — generic Koa validation middleware, reused by every
                         # write endpoint. Error-handling middleware lands in a later ticket.
   config/              # environment/config loading, seed data
@@ -116,6 +122,10 @@ curl -X POST http://localhost:3000/v1/orders/quote \
   -d '{"quantity": 50, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
 ```
 
+`orderSubmissionService.submitOrder` (ticket 11) is the atomic-submission service — recalculates
+and persists an order, decrementing inventory in the same transaction. Not yet wired to an HTTP
+route (that's `POST /v1/orders`, a later ticket); call it directly for now.
+
 ### Testing notes
 
 - Multiple test files share one real Postgres `orders_test` database, each resetting it in
@@ -139,8 +149,19 @@ curl -X POST http://localhost:3000/v1/orders/quote \
   given — it never recalculates pricing/discount/shipping, so a later change to discount tiers or
   the shipping rate can't retroactively alter a historical order (ticket 10). Every repository
   function accepts an optional `executor` (a pool or an already-checked-out transaction client),
-  so a later ticket's atomic submit flow can run inventory decrements and order creation in one
-  transaction without duplicating queries.
+  which is exactly how ticket 11 composes them.
+- **Atomic submission** (ticket 11): `orderSubmissionService.submitOrder` wraps the whole flow —
+  re-reading inventory, recalculating price/allocation/validity, decrementing stock per
+  allocation line, and creating the order — in a single `withTransaction` call
+  (`infrastructure/db/transaction.ts`). It never trusts a client-supplied price, discount,
+  shipping, or allocation (the input is only `quantity`/`shippingAddress` — there's nothing else
+  to trust). If the recalculated order is invalid, or a concurrent submission wins a race for the
+  same stock (a guarded decrement affecting 0 rows), the whole transaction rolls back — including
+  any decrements already applied earlier in the same call — so a failed submission never leaves
+  partial inventory changes or an orphaned order row. Verified against a real database in
+  `tests/application/orderSubmissionService.test.ts` (single/multi-warehouse success, insufficient
+  stock, shipping >15%, concurrent conflicts) and `tests/infrastructure/db/transaction.test.ts`
+  (the rollback mechanism itself, isolated from order-specific logic).
 - **v1 scope**: `inventory` is keyed by warehouse only (no item column) — there's exactly one SKU
   for v1. The domain-level `Inventory` type still carries an `itemId` (`DEFAULT_ITEM_ID`) for
   forward compatibility if multi-SKU support is added later.

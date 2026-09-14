@@ -222,6 +222,7 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
 
 
 ### TODO: next 
+- relocate validate request body function to stay in controller
 - autogen API Spec
 - apply ORM database
 - integrate test with cucumber
@@ -229,5 +230,6 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
 - enhance security 
   - middleware verifyAuth
   - verify api policy
-- enhance error handling format - make it more simple to add new errorCode
+- enhance error handling format 
+  - make it more simple to add new/use errorCode
 

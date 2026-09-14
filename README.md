@@ -2,10 +2,11 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–12 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–13 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
-> persistence & order numbers, atomic order submission, `POST /v1/orders`). See
+> persistence & order numbers, atomic order submission, `POST /v1/orders`, idempotency &
+> concurrency protection). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -138,6 +139,18 @@ curl -X POST http://localhost:3000/v1/orders \
   -d '{"quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
 ```
 
+`POST /v1/orders` also accepts an optional `Idempotency-Key` header (ticket 13). Repeating a
+request with the same key returns the original order (identical response, still `201`) instead of
+creating a second one — safe to retry after a dropped connection or timeout without double-billing
+a customer.
+
+```bash
+curl -X POST http://localhost:3000/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: <client-generated-uuid>" \
+  -d '{"quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+```
+
 ### Testing notes
 
 - Multiple test files share one real Postgres `orders_test` database, each resetting it in
@@ -174,6 +187,21 @@ curl -X POST http://localhost:3000/v1/orders \
   `tests/application/orderSubmissionService.test.ts` (single/multi-warehouse success, insufficient
   stock, shipping >15%, concurrent conflicts) and `tests/infrastructure/db/transaction.test.ts`
   (the rollback mechanism itself, isolated from order-specific logic).
+- **Idempotency** (ticket 13): an `idempotency_keys` table (`key TEXT PRIMARY KEY`, `order_number`
+  referencing `orders`) maps a client's `Idempotency-Key` to the order it produced.
+  `orderRepository.recordIdempotencyKey` is called with the *same* transaction client as the
+  `createOrder` call it's claiming a key for, so the claim and the order live or die together —
+  a rolled-back submission (business rejection, lost inventory race) never leaves a key claimed,
+  so retrying that same key is a fresh attempt, not a permanent dead end. The PRIMARY KEY
+  constraint is what actually resolves *concurrent* submissions using the same key (identical to
+  how `order_number_seq`/`decrementInventory` resolve their own races): whichever transaction's
+  claim commits first wins; the loser's whole transaction rolls back (including its own inventory
+  decrements) and `orderSubmissionService.submitOrder` transparently returns the winner's order
+  instead of erroring — both callers see the same successful result. Verified in
+  `tests/repositories/orderRepository.test.ts` (the constraint itself),
+  `tests/application/orderSubmissionService.test.ts`, and
+  `tests/integration/orderSubmission.api.test.ts` (sequential replay, concurrent same-key racing,
+  and a failed attempt not blocking a later retry with the same key).
 - **v1 scope**: `inventory` is keyed by warehouse only (no item column) — there's exactly one SKU
   for v1. The domain-level `Inventory` type still carries an `itemId` (`DEFAULT_ITEM_ID`) for
   forward compatibility if multi-SKU support is added later.

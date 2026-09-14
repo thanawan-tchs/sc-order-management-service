@@ -1,8 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { IdempotencyKeyConflictError } from "../../src/domain/errors";
 import { toMoney } from "../../src/domain/money";
 import { OrderQuote } from "../../src/domain/types";
 import { closePool } from "../../src/infrastructure/db/pool";
-import { createOrder, getOrderByNumber } from "../../src/repositories/orderRepository";
+import {
+  createOrder,
+  findOrderByIdempotencyKey,
+  getOrderByNumber,
+  recordIdempotencyKey,
+} from "../../src/repositories/orderRepository";
 import { resetTestDb } from "../helpers/db";
 
 // Seed order is fixed and resetTestDb() restarts identities, so these are reliably stable.
@@ -129,5 +135,46 @@ describe("getOrderByNumber", () => {
   it("returns undefined for an unknown order number", async () => {
     const fetched = await getOrderByNumber("ORD-9999999");
     expect(fetched).toBeUndefined();
+  });
+});
+
+describe("recordIdempotencyKey / findOrderByIdempotencyKey", () => {
+  it("returns undefined for a key that was never claimed", async () => {
+    expect(await findOrderByIdempotencyKey("never-used")).toBeUndefined();
+  });
+
+  it("finds the order a key was claimed for", async () => {
+    const order = await createOrder(buildQuote());
+    await recordIdempotencyKey("key-1", order.orderNumber);
+
+    const found = await findOrderByIdempotencyKey("key-1");
+
+    expect(found).toEqual(order);
+  });
+
+  it("rejects claiming the same key twice, for different orders, with a typed error", async () => {
+    const first = await createOrder(buildQuote());
+    const second = await createOrder(buildQuote({ quantity: 20 }));
+
+    await recordIdempotencyKey("dup-key", first.orderNumber);
+
+    await expect(recordIdempotencyKey("dup-key", second.orderNumber)).rejects.toBeInstanceOf(
+      IdempotencyKeyConflictError
+    );
+
+    // The original claim is untouched.
+    expect((await findOrderByIdempotencyKey("dup-key"))?.orderNumber).toBe(first.orderNumber);
+  });
+
+  it("allows the same order to be claimed under two different keys", async () => {
+    // Not a scenario the application layer produces, but nothing about the schema forbids it —
+    // confirms the PRIMARY KEY constraint is on `key` alone, not `(key, order_number)`.
+    const order = await createOrder(buildQuote());
+
+    await recordIdempotencyKey("key-a", order.orderNumber);
+    await recordIdempotencyKey("key-b", order.orderNumber);
+
+    expect((await findOrderByIdempotencyKey("key-a"))?.orderNumber).toBe(order.orderNumber);
+    expect((await findOrderByIdempotencyKey("key-b"))?.orderNumber).toBe(order.orderNumber);
   });
 });

@@ -75,10 +75,13 @@ function toOrderResponse(order: Order): OrderResponseBody {
  */
 export async function submitOrder(ctx: Context): Promise<void> {
   const input = ctx.state.validated as OrderRequestInput;
+  // Header names are case-insensitive in HTTP; ctx.get() normalizes for us. An empty/whitespace
+  // header is treated the same as no header at all (ticket 13's Idempotency-Key is optional).
+  const idempotencyKey = ctx.get("Idempotency-Key").trim() || undefined;
 
   let order: Order;
   try {
-    order = await orderSubmissionService.submitOrder(input);
+    order = await orderSubmissionService.submitOrder({ ...input, idempotencyKey });
   } catch (error) {
     if (error instanceof OrderSubmissionError) {
       ctx.status = 422;

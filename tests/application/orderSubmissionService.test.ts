@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { submitOrder } from "../../src/application/orderSubmissionService";
 import { InsufficientStockError, OrderSubmissionError } from "../../src/domain/errors";
 import { closePool, getPool } from "../../src/infrastructure/db/pool";
-import { getOrderByNumber } from "../../src/repositories/orderRepository";
+import { findOrderByIdempotencyKey, getOrderByNumber } from "../../src/repositories/orderRepository";
 import { getInventory } from "../../src/repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
@@ -224,4 +224,109 @@ describe("submitOrder — concurrency", () => {
       expect(await countOrders()).toBe(before + 1);
     }
   );
+});
+
+describe("submitOrder — idempotency (ticket 13)", () => {
+  it("returns the same order for the same key submitted twice, without decrementing inventory twice", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+
+    const first = await submitOrder({
+      quantity: 20,
+      shippingAddress: DESTINATION,
+      idempotencyKey: "retry-key-1",
+    });
+    const second = await submitOrder({
+      quantity: 20,
+      shippingAddress: DESTINATION,
+      idempotencyKey: "retry-key-1",
+    });
+
+    expect(second).toEqual(first);
+    expect(await countOrders()).toBe(1);
+    // Decremented once, not twice.
+    expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(80);
+  });
+
+  it("treats requests without an idempotency key as always distinct", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+
+    const first = await submitOrder({ quantity: 5, shippingAddress: DESTINATION });
+    const second = await submitOrder({ quantity: 5, shippingAddress: DESTINATION });
+
+    expect(second.orderNumber).not.toBe(first.orderNumber);
+    expect(await countOrders()).toBe(2);
+  });
+
+  it("under a concurrent submission with the same key, exactly one order is created and both callers receive it", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+
+    const [a, b] = await Promise.all([
+      submitOrder({ quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "concurrent-key" }),
+      submitOrder({ quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "concurrent-key" }),
+    ]);
+
+    expect(a.orderNumber).toBe(b.orderNumber);
+    expect(await countOrders()).toBe(1);
+    // Decremented exactly once, not once per caller — proof the "loser" of the idempotency-key
+    // race never applied its own decrement (or had it rolled back if it got that far).
+    expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(80);
+  });
+
+  it("does not consume the idempotency key on a failed submission — a retry with the same key can still succeed", async () => {
+    await zeroOutStock(ALL_WAREHOUSE_IDS);
+
+    await expect(
+      submitOrder({ quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "retry-after-failure" })
+    ).rejects.toBeInstanceOf(OrderSubmissionError);
+    expect(await findOrderByIdempotencyKey("retry-after-failure")).toBeUndefined();
+
+    // Make the order fulfillable and retry with the SAME key — must not be blocked by the
+    // earlier failed attempt (ticket 13: "failed transaction does not consume idempotency state").
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+    const order = await submitOrder({
+      quantity: 20,
+      shippingAddress: DESTINATION,
+      idempotencyKey: "retry-after-failure",
+    });
+
+    expect(order.quantity).toBe(20);
+    expect(await countOrders()).toBe(1);
+    expect((await findOrderByIdempotencyKey("retry-after-failure"))?.orderNumber).toBe(order.orderNumber);
+  });
+
+  it("fulfills a request for exactly the available stock", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 8);
+
+    const order = await submitOrder({
+      quantity: 8,
+      shippingAddress: DESTINATION,
+      idempotencyKey: "exact-stock",
+    });
+
+    expect(order.allocations).toEqual([
+      expect.objectContaining({ warehouseId: LOS_ANGELES_ID, quantity: 8 }),
+    ]);
+    expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(0);
+  });
+
+  it("different idempotency keys still correctly compete for the same limited stock (one wins, one fails)", async () => {
+    await zeroOutStock(ALL_WAREHOUSE_IDS);
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 10);
+
+    const results = await Promise.allSettled([
+      submitOrder({ quantity: 8, shippingAddress: DESTINATION, idempotencyKey: "key-a" }),
+      submitOrder({ quantity: 8, shippingAddress: DESTINATION, idempotencyKey: "key-b" }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    if (rejected[0].status === "rejected") {
+      const isExpectedErrorType =
+        rejected[0].reason instanceof InsufficientStockError || rejected[0].reason instanceof OrderSubmissionError;
+      expect(isExpectedErrorType).toBe(true);
+    }
+    expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(2);
+  });
 });

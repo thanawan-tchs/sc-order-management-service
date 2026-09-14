@@ -209,3 +209,60 @@ describe("POST /v1/orders", () => {
     expect(stockAfter).toEqual(stockBefore);
   });
 });
+
+describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
+  it("returns the same order for the same key sent twice, and creates only one order", async () => {
+    await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
+    const before = await countOrders();
+
+    const first = await request(app.callback())
+      .post("/v1/orders")
+      .set("Idempotency-Key", "http-retry-1")
+      .send({ quantity: 20, shippingAddress: NYC });
+    const second = await request(app.callback())
+      .post("/v1/orders")
+      .set("Idempotency-Key", "http-retry-1")
+      .send({ quantity: 20, shippingAddress: NYC });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.orderNumber).toBe(first.body.orderNumber);
+    expect(second.body).toEqual(first.body);
+
+    expect(await countOrders()).toBe(before + 1);
+    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
+  });
+
+  it("treats requests with no Idempotency-Key header as always distinct", async () => {
+    await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
+
+    const first = await request(app.callback()).post("/v1/orders").send({ quantity: 5, shippingAddress: NYC });
+    const second = await request(app.callback()).post("/v1/orders").send({ quantity: 5, shippingAddress: NYC });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.orderNumber).not.toBe(first.body.orderNumber);
+  });
+
+  it("under a concurrent submission with the same key, both responses carry the same order", async () => {
+    await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
+    const before = await countOrders();
+
+    const [a, b] = await Promise.all([
+      request(app.callback())
+        .post("/v1/orders")
+        .set("Idempotency-Key", "http-concurrent-1")
+        .send({ quantity: 20, shippingAddress: NYC }),
+      request(app.callback())
+        .post("/v1/orders")
+        .set("Idempotency-Key", "http-concurrent-1")
+        .send({ quantity: 20, shippingAddress: NYC }),
+    ]);
+
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+    expect(a.body.orderNumber).toBe(b.body.orderNumber);
+    expect(await countOrders()).toBe(before + 1);
+    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
+  });
+});

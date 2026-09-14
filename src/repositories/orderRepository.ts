@@ -1,7 +1,17 @@
 import { CURRENCY, ITEM_WEIGHT_KG } from "../config";
+import { IdempotencyKeyConflictError } from "../domain/errors";
 import { toMoney } from "../domain/money";
 import { Order, OrderQuote, OrderStatus, ShippingAllocation } from "../domain/types";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
+
+/** Postgres error code for a unique/primary-key constraint violation. `pg` attaches this to the
+ *  thrown error's `.code` — used to tell "lost the idempotency-key race" apart from any other
+ *  failure while inserting into `idempotency_keys`. */
+const POSTGRES_UNIQUE_VIOLATION = "23505";
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION;
+}
 
 interface OrderRow {
   id: number;
@@ -149,4 +159,48 @@ export async function getOrderByNumber(
   );
 
   return mapOrderRow(orderRow, allocationRows.map(mapAllocationRow));
+}
+
+/** Looks up the order already associated with an Idempotency-Key, if any (ticket 13). */
+export async function findOrderByIdempotencyKey(
+  idempotencyKey: string,
+  executor: QueryExecutor = getPool()
+): Promise<Order | undefined> {
+  const { rows } = await executor.query<{ order_number: string }>(
+    "SELECT order_number FROM idempotency_keys WHERE key = $1",
+    [idempotencyKey]
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+
+  return getOrderByNumber(row.order_number, executor);
+}
+
+/**
+ * Claims an Idempotency-Key for `orderNumber` — meant to be called with the same `executor` (and
+ * thus the same transaction) as the `createOrder` call it's claiming the key for, so the claim
+ * and the order live or die together (ticket 13's "failed transaction does not consume
+ * idempotency state").
+ *
+ * Throws `IdempotencyKeyConflictError` if the key was already claimed (by a concurrent
+ * submission racing on the same key — the `idempotency_keys` PRIMARY KEY is what actually decides
+ * the race, same pattern as `order_number_seq`/`decrementInventory`), rather than the raw
+ * Postgres unique-violation error, so callers can handle it without depending on `pg` internals.
+ */
+export async function recordIdempotencyKey(
+  idempotencyKey: string,
+  orderNumber: string,
+  executor: QueryExecutor = getPool()
+): Promise<void> {
+  try {
+    await executor.query("INSERT INTO idempotency_keys (key, order_number) VALUES ($1, $2)", [
+      idempotencyKey,
+      orderNumber,
+    ]);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new IdempotencyKeyConflictError(idempotencyKey);
+    }
+    throw error;
+  }
 }

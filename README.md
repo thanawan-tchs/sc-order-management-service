@@ -221,9 +221,13 @@ services never set `ctx.status`/`ctx.body` for a failure themselves, they just t
 first in `app.ts` so Koa's onion model wraps every other middleware inside its `try/catch`.
 
 
-// TODO: next 
+### TODO: next 
 - autogen API Spec
 - apply ORM database
 - integrate test with cucumber
 - cleaning the comment from AI
+- enhance security 
+  - middleware verifyAuth
+  - verify api policy
+- enhance error handling format - make it more simple to add new errorCode
 

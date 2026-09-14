@@ -1,9 +1,21 @@
 import { createApp } from "./app";
 import { config } from "./config";
+import { migrate } from "./infrastructure/db/migrate";
+import { seed } from "./infrastructure/db/seed";
 
-const app = createApp();
+async function main(): Promise<void> {
+  await migrate();
+  await seed();
 
-app.listen(config.port, () => {
+  const app = createApp();
+  app.listen(config.port, () => {
+    // eslint-disable-next-line no-console
+    console.log(`order-management-service listening on port ${config.port}`);
+  });
+}
+
+main().catch((error) => {
   // eslint-disable-next-line no-console
-  console.log(`order-management-service listening on port ${config.port}`);
+  console.error("Failed to start order-management-service:", error);
+  process.exit(1);
 });

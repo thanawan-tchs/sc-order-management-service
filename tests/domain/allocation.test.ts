@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { allocateOrder, WarehouseCandidate } from "../../src/domain/allocation";
-import { EARTH_RADIUS_KM } from "../../src/domain/distance";
 import { calculateShippingCost } from "../../src/domain/shipping";
+import { pointAtDistanceFromOrigin } from "../helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 
@@ -11,17 +11,9 @@ const DESTINATION = { latitude: 0, longitude: 0 };
 const WEIGHT_KG = 1;
 const RATE = 1;
 
-/**
- * Builds a warehouse whose great-circle distance from DESTINATION is *exactly* `distanceKm`
- * (same longitude as the destination, so the Haversine formula reduces exactly to
- * EARTH_RADIUS_KM * angular separation — see tests/domain/distance.test.ts's meridian case,
- * which independently verifies that reduction holds). This is the algebraic inverse of that
- * formula, not an approximation, so `calculateDistanceKm` reproduces `distanceKm` to within
- * float rounding.
- */
 function warehouseAtDistance(distanceKm: number, warehouseId: number, stock: number): WarehouseCandidate {
-  const deltaLatDeg = (distanceKm / EARTH_RADIUS_KM) * (180 / Math.PI);
-  return { warehouseId, latitude: deltaLatDeg, longitude: 0, stock };
+  const { latitude, longitude } = pointAtDistanceFromOrigin(distanceKm);
+  return { warehouseId, latitude, longitude, stock };
 }
 
 describe("allocateOrder", () => {

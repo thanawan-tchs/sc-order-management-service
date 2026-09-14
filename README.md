@@ -2,9 +2,9 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–07 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–08 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
-> warehouse allocation). See
+> warehouse allocation, order quote application service). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -72,13 +72,15 @@ src/
   server.ts           # runtime entrypoint: migrate -> seed -> listen
   routes/             # route definitions, mounted onto the root router
   controllers/        # thin HTTP handlers — no business logic
-  application/        # (empty — application/use-case services land in later tickets)
+  application/         # orderQuoteService — the full side-effect-free quote flow (ticket 08):
+                        # read stock -> price -> allocate -> check the 15% rule -> return a quote.
+                        # No HTTP, no order/inventory writes. The submit service (a later ticket)
+                        # will reuse the same domain calculators for its own recompute-then-write.
   domain/              # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...),
                         # request validation schemas (zod), domain error types, pricing.ts
                         # (subtotal/discount), distance.ts (Haversine), shipping.ts (per-allocation
-                        # cost + multi-warehouse sum), and allocation.ts (greedy lowest-cost
-                        # multi-warehouse fulfillment). Orchestrating this against live stock
-                        # (the quote/submit services) lands in later tickets.
+                        # cost + multi-warehouse sum), allocation.ts (greedy lowest-cost
+                        # multi-warehouse fulfillment), and validity.ts (the 15% shipping-cost rule).
   repositories/        # warehouseRepository — warehouse + inventory data access
   infrastructure/
     db/                # pg Pool, schema (DDL), migrate, seed

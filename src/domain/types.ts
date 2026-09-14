@@ -1,4 +1,5 @@
 import { Money } from "./money";
+import { InvalidOrderReason } from "./validity";
 
 /** A sellable product. Single SKU for v1, but modeled as its own entity for extensibility. */
 export interface Item {
@@ -47,10 +48,11 @@ export interface OrderQuote {
   discountRate: number;
   discountCents: Money;
   amountAfterDiscountCents: Money;
+  totalWeightKg: number;
   shippingCostCents: Money;
   totalCents: Money;
   valid: boolean;
-  invalidReasons: string[];
+  invalidReasons: InvalidOrderReason[];
   allocations: ShippingAllocation[];
 }
 

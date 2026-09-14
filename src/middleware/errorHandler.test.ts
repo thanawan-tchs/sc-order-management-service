@@ -3,6 +3,7 @@ import Koa, { Context } from "koa";
 import Router from "@koa/router";
 import request from "supertest";
 import { OrderNotFoundError, ValidationError } from "../domain/errors";
+import { logger } from "../observability/logger";
 import { errorHandler } from "./errorHandler";
 
 function buildApp(handler: (ctx: Context) => void | Promise<void>): Koa {
@@ -50,7 +51,7 @@ describe("errorHandler middleware", () => {
   });
 
   it("returns a generic 500 for an unexpected error, without leaking its message", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
     const app = buildApp(() => {
       throw new Error("connection refused at db.internal:5432, password=hunter2");
     });
@@ -68,7 +69,7 @@ describe("errorHandler middleware", () => {
   });
 
   it("logs the real error server-side even though the client only sees the generic message", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
     const originalError = new Error("boom: something specific broke");
     const app = buildApp(() => {
       throw originalError;
@@ -76,12 +77,12 @@ describe("errorHandler middleware", () => {
 
     await request(app.callback()).get("/test");
 
-    expect(consoleSpy).toHaveBeenCalledTimes(1);
-    expect(consoleSpy.mock.calls[0]).toContain(originalError);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith({ err: originalError }, "unhandled error while processing request");
   });
 
   it("returns 500 for a non-Error thrown value too, without crashing", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
     const app = buildApp(() => {
       throw "just a string, not an Error instance";
     });

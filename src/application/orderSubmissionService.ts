@@ -120,7 +120,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
       }
 
       return order;
-    });
+    }, "order_submission");
   } catch (error) {
     if (idempotencyKey && error instanceof IdempotencyKeyConflictError) {
       const winner = await checkIdempotencyKey(idempotencyKey, input);

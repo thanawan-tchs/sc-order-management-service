@@ -68,8 +68,11 @@ function toOrderDetailResponse(order: Order): OrderDetailResponseBody {
  */
 export async function getOrder(ctx: Context): Promise<void> {
   const { orderNumber } = ctx.params;
-  const order = await getOrderService.getOrder(orderNumber);
+  // Set from the request even before we know it resolves to a real order, so a 404's completion
+  // log line still shows which order number was requested.
+  ctx.state.orderNumber = orderNumber;
 
+  const order = await getOrderService.getOrder(orderNumber);
   if (!order) {
     throw new OrderNotFoundError(orderNumber);
   }

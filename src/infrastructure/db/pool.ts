@@ -13,7 +13,17 @@ let pool: Pool | undefined;
 
 export function getPool(): Pool {
   if (!pool) {
-    pool = new Pool({ connectionString: config.databaseUrl });
+    pool = new Pool({
+      connectionString: config.databaseUrl,
+      // Connection-pool configuration (ticket 17) — all overridable per-environment via
+      // config/index.ts's env vars.
+      max: config.dbPoolMax,
+      idleTimeoutMillis: config.dbIdleTimeoutMs,
+      connectionTimeoutMillis: config.dbConnectionTimeoutMs,
+      // Postgres-enforced per-statement timeout ("database timeout") — aborts any single query
+      // that runs longer than this, server-side, regardless of what the client does.
+      statement_timeout: config.dbStatementTimeoutMs,
+    });
   }
   return pool;
 }

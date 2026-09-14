@@ -2,12 +2,12 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–16 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–17 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
 > persistence & order numbers, atomic order submission, `POST /v1/orders`, idempotency &
 > concurrency protection, `GET /v1/orders/:orderNumber`, centralized API error handling, test
-> strategy & CI). See
+> strategy & CI, observability & production readiness). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -111,12 +111,21 @@ src/
                         # or an already-checked-out transaction client) so ticket 11 can run
                         # several of these calls as one atomic unit.
   infrastructure/
-    db/                # pg Pool, schema (DDL), migrate, seed, and transaction.ts's
-                        # withTransaction() — BEGIN/COMMIT/ROLLBACK wrapper used by ticket 11
+    db/                # pg Pool (ticket 17: pool size + timeouts from config), schema (DDL),
+                        # migrate, seed, and transaction.ts's withTransaction() —
+                        # BEGIN/COMMIT/ROLLBACK wrapper used by ticket 11, now also recording
+                        # transaction_outcomes_total / database_operation_duration_seconds
+    gracefulShutdown.ts # ticket 17: dependency-injected SIGTERM/SIGINT handler (server.close ->
+                        # closePool -> exit(0), or force-exit(1) on timeout) — see server.ts
+  observability/       # ticket 17: logger.ts (pino instance) and metrics.ts (prom-client
+                        # registry + metric definitions)
   middleware/          # errorHandler (ticket 15) — the ONLY place an error becomes an HTTP
                         # response; registered first in app.ts so it wraps everything else.
                         # validateBody — throws a typed ValidationError on a bad request body
                         # rather than shaping a response itself, same as every other layer.
+                        # requestContext (ticket 17) — assigns/echoes X-Request-Id, attaches a
+                        # per-request child logger to ctx.state.log, and records HTTP metrics;
+                        # wraps errorHandler so it observes the final post-error-handling status.
   config/              # environment/config loading, seed data
   utils/                # (empty — shared helpers as needed)
   **/*.test.ts          # unit/service/repository/middleware tests, co-located next to the file
@@ -196,7 +205,7 @@ Every error response across all three endpoints has the same shape (ticket 15):
 | 404 | `ORDER_NOT_FOUND` |
 | 409 | `INVENTORY_CONFLICT` (a concurrent submission won a live race for the same stock), `IDEMPOTENCY_KEY_REUSED` (the same `Idempotency-Key` was sent with a different `quantity`/`shippingAddress` than the request it was originally claimed for — a *matching* retry is not an error, see ticket 13) |
 | 422 | `INSUFFICIENT_STOCK`, `SHIPPING_COST_EXCEEDS_15_PERCENT` (the recalculated order fails a business rule) |
-| 500 | `INTERNAL_SERVER_ERROR` — anything unexpected. The real error (message, stack) is logged server-side via `console.error`; the client never sees more than this generic code/message, regardless of what actually failed (a bug, a database outage, whatever) |
+| 500 | `INTERNAL_SERVER_ERROR` — anything unexpected. The real error (message, stack) is logged server-side as structured JSON (see "Observability & production readiness" below); the client never sees more than this generic code/message, regardless of what actually failed (a bug, a database outage, whatever) |
 
 All of this is decided in exactly one place, `src/middleware/errorHandler.ts` — controllers and
 services never set `ctx.status`/`ctx.body` for a failure themselves, they just throw a typed
@@ -299,3 +308,41 @@ ends up in the production build.
 - **v1 scope**: `inventory` is keyed by warehouse only (no item column) — there's exactly one SKU
   for v1. The domain-level `Inventory` type still carries an `itemId` (`DEFAULT_ITEM_ID`) for
   forward compatibility if multi-SKU support is added later.
+
+### Observability & production readiness (ticket 17)
+
+- **Structured logging**: [`pino`](https://getpino.io/), one JSON object per line. Every request
+  gets a child logger (`ctx.state.log`) tagged with its `requestId`, so all log lines for one
+  request can be correlated. `databaseUrl` and any `password` field are redacted automatically. Set
+  verbosity with `LOG_LEVEL` (default `info`; tests run with `LOG_LEVEL=silent`).
+- **Correlation IDs**: every response carries an `X-Request-Id` header — echoed back if the client
+  sent one, otherwise generated (`crypto.randomUUID()`). Included in every log line for that
+  request, so a client-reported issue can be traced straight to its server-side logs.
+- **Metrics**: [`prom-client`](https://github.com/siimon/prom-client), exposed at `GET /metrics` in
+  Prometheus text format — default Node process metrics (CPU, memory, event-loop lag) plus
+  application metrics: `http_requests_total`/`http_request_duration_seconds` (by method, route
+  *pattern* — not raw path, to keep label cardinality bounded — and status), `quote_requests_total`,
+  `submit_requests_total`, `orders_successful_total`, `orders_rejected_total` (by rejection reason),
+  `inventory_conflicts_total`, `transaction_outcomes_total` (committed/rolled_back), and
+  `database_operation_duration_seconds`.
+- **Liveness vs. readiness**: `GET /health` (unchanged since ticket 01) never touches the database —
+  it only answers "is the process alive." `GET /ready` additionally pings Postgres and returns `503`
+  (`{"status":"not ready","reason":"database unavailable"}`, no internal error detail leaked) if it's
+  unreachable — the signal an orchestrator should use to decide whether to route traffic to this
+  instance.
+- **Graceful shutdown**: on `SIGTERM`/`SIGINT` the server stops accepting new connections
+  (`server.close()`), then closes the database pool, then exits `0`. If that doesn't finish within
+  `SHUTDOWN_TIMEOUT_MS` (default 10s), it force-exits `1` instead of hanging. Implemented as a pure,
+  dependency-injected function (`src/infrastructure/gracefulShutdown.ts`) so it's unit-testable
+  without a real server or database.
+- **Connection-pool & timeout configuration**: all environment-configurable, see `.env.example` —
+  `DB_POOL_MAX`, `DB_IDLE_TIMEOUT_MS`, `DB_CONNECTION_TIMEOUT_MS`, `DB_STATEMENT_TIMEOUT_MS`
+  (Postgres-enforced per-query timeout, server-side), `REQUEST_TIMEOUT_MS`/`HEADERS_TIMEOUT_MS`
+  (Node's `http.Server` timeouts), `SHUTDOWN_TIMEOUT_MS`.
+- **Docker**: multi-stage `Dockerfile` (`node:20-alpine`, deps → build → production, non-root
+  user, `npm ci --omit=dev` in the final stage).
+
+  ```bash
+  docker build -t order-management-service .
+  docker compose up --build app   # runs the built image against the docker-compose `db` service
+  ```

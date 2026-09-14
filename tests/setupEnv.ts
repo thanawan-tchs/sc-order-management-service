@@ -5,3 +5,8 @@
  */
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? "postgres://app:app@localhost:5433/orders_test";
+
+/** Keeps structured log lines out of test output. Tests that assert on log content mock the
+ *  logger's methods directly (see src/middleware/requestContext.test.ts) rather than relying on
+ *  a particular log level being enabled. */
+process.env.LOG_LEVEL = "silent";

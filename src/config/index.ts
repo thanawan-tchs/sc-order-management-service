@@ -1,6 +1,28 @@
 export const config = {
+  nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL ?? "postgres://app:app@localhost:5433/orders",
+
+  /** pino level: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent". */
+  logLevel: process.env.LOG_LEVEL ?? "info",
+
+  // Connection-pool configuration (ticket 17) — all overridable per-environment; defaults are
+  // reasonable for a single small instance, not tuned for any specific production scale.
+  dbPoolMax: Number(process.env.DB_POOL_MAX ?? 10),
+  dbIdleTimeoutMs: Number(process.env.DB_IDLE_TIMEOUT_MS ?? 30_000),
+  dbConnectionTimeoutMs: Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 5_000),
+  /** Postgres-enforced `statement_timeout` — aborts any single query running longer than this,
+   *  server-side, regardless of what the client is doing. */
+  dbStatementTimeoutMs: Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 10_000),
+
+  /** Node's http.Server-level timeouts — abort a request that hangs too long, independent of
+   *  anything happening (or not) inside the app. */
+  requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS ?? 30_000),
+  headersTimeoutMs: Number(process.env.HEADERS_TIMEOUT_MS ?? 31_000),
+
+  /** How long graceful shutdown waits for in-flight requests + the DB pool to close before
+   *  forcing exit. */
+  shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 10_000),
 };
 
 /**

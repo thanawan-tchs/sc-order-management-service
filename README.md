@@ -79,69 +79,77 @@ npm run typecheck
 
 ```text
 src/
-  app.ts              # builds the Koa app (no listen()) — importable by tests
-  server.ts           # runtime entrypoint: migrate -> seed -> listen
-  routes/             # route definitions: /health (unversioned), /v1/orders/* (versioned API)
-  controllers/        # one file per controller: orderQuote.controller.ts, orderSubmission.
-                        # controller.ts, getOrder.controller.ts, health.controller.ts. Each
-                        # handler: parse/validate (via middleware) -> call an application service
-                        # -> map its result (and, for submit, its thrown error type) to the HTTP
-                        # response. No pricing/allocation logic lives here.
-  application/         # orderQuoteService (ticket 08) — side-effect-free quote flow: read stock
-                        # -> price -> allocate -> check the 15% rule -> return a quote. No HTTP,
-                        # no writes. orderSubmissionService (ticket 11) — the same calculation,
-                        # reused as-is (readWarehouseCandidates + getOrderQuote), but run inside a
-                        # single DB transaction and, only if the result is valid, followed by the
-                        # inventory decrements + order creation, all through that same
-                        # transaction's client (see "Database" below for how atomicity works).
-                        # getOrderService (ticket 14) — thin read-only wrapper over
-                        # orderRepository.getOrderByNumber; never recalculates anything.
-  domain/              # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...),
-                        # request validation schemas (zod), errors.ts (every AppError subclass —
-                        # ValidationError, OrderSubmissionError, InsufficientStockError,
-                        # IdempotencyKeyReusedError, OrderNotFoundError — each carrying its own
-                        # HTTP status + error code, ticket 15), pricing.ts (subtotal/discount),
-                        # distance.ts (Haversine), shipping.ts (per-allocation cost +
-                        # multi-warehouse sum), allocation.ts (greedy lowest-cost multi-warehouse
-                        # fulfillment), and validity.ts (the 15% shipping-cost rule).
-  repositories/        # warehouseRepository (warehouse + inventory data access, incl.
-                        # decrementInventory) and orderRepository (ticket 10: persists an
-                        # already-computed OrderQuote as an Order + its allocations, generates a
-                        # unique order number). Every function takes an optional `executor` (pool
-                        # or an already-checked-out transaction client) so ticket 11 can run
-                        # several of these calls as one atomic unit.
+  app.ts                    # builds the Koa app (no listen()) — importable by tests
+  server.ts                 # runtime entrypoint: migrate -> seed -> listen
+  routes/                   # /health (unversioned), /v1/orders/* (versioned API)
+  controllers/               # one file per controller — parse/validate -> call a service -> map to HTTP
+  application/               # orderQuoteService, orderSubmissionService, getOrderService
+  domain/                    # types, validation schemas, errors, pricing/distance/shipping/allocation/validity
+  repositories/               # warehouseRepository, orderRepository
   infrastructure/
-    db/                # pg Pool (ticket 17: pool size + timeouts from config), schema (DDL),
-                        # migrate, seed, and transaction.ts's withTransaction() —
-                        # BEGIN/COMMIT/ROLLBACK wrapper used by ticket 11, now also recording
-                        # transaction_outcomes_total / database_operation_duration_seconds
-    gracefulShutdown.ts # ticket 17: dependency-injected SIGTERM/SIGINT handler (server.close ->
-                        # closePool -> exit(0), or force-exit(1) on timeout) — see server.ts
-  observability/       # ticket 17: logger.ts (pino instance) and metrics.ts (prom-client
-                        # registry + metric definitions)
-  middleware/          # errorHandler (ticket 15) — the ONLY place an error becomes an HTTP
-                        # response; registered first in app.ts so it wraps everything else.
-                        # validateBody — throws a typed ValidationError on a bad request body
-                        # rather than shaping a response itself, same as every other layer.
-                        # requestContext (ticket 17) — assigns/echoes X-Request-Id, attaches a
-                        # per-request child logger to ctx.state.log, and records HTTP metrics;
-                        # wraps errorHandler so it observes the final post-error-handling status.
-  config/              # environment/config loading, seed data
-  utils/                # (empty — shared helpers as needed)
-  **/*.test.ts          # unit/service/repository/middleware tests, co-located next to the file
-                        # they test (e.g. domain/pricing.ts + domain/pricing.test.ts) — see "Test
-                        # strategy" below
+    db/                       # pg Pool, schema (DDL), migrate, seed, withTransaction()
+    gracefulShutdown.ts       # SIGTERM/SIGINT handler
+  observability/              # logger.ts (pino), metrics.ts (prom-client)
+  middleware/                 # errorHandler, validateBody, requestContext
+  config/                     # environment/config loading, seed data
+  utils/                      # (empty — shared helpers as needed)
+  **/*.test.ts                # unit/service/repository/middleware tests, co-located next to what they test
 tests/
-  integration/          # HTTP-level tests spanning multiple files/whole endpoints — the only
-                        # tests that don't have one single src/ file to live next to
-  helpers/db.ts         # resetTestDb() — migrate + truncate + reseed, used in beforeEach
-  helpers/geo.ts         # places a point at an exact distance from an origin, for hand-verifiable
-                        # allocation/shipping-cost fixtures
-  setupEnv.ts            # points DATABASE_URL at the test DB before any test file loads
+  integration/                # HTTP-level tests spanning multiple files/whole endpoints
+  helpers/db.ts               # resetTestDb() — migrate + truncate + reseed, used in beforeEach
+  helpers/geo.ts              # places a point at an exact distance from an origin (fixtures)
+  setupEnv.ts                 # points DATABASE_URL at the test DB before any test file loads
 ```
 
 `app.ts` is kept separate from `server.ts` specifically so the Koa app can be imported and exercised
 in tests (via `supertest`) without binding a real port.
+
+**`controllers/`** — one file per controller (`orderQuote`, `orderSubmission`, `getOrder`,
+`health`). Each handler: parse/validate (via middleware) → call an application service → map its
+result (and, for submit, its thrown error type) to the HTTP response. No pricing/allocation logic
+lives here.
+
+**`application/`**
+- `orderQuoteService` (ticket 08) — side-effect-free quote flow: read stock → price → allocate →
+  check the 15% rule → return a quote. No HTTP, no writes.
+- `orderSubmissionService` (ticket 11) — the same calculation, reused as-is
+  (`readWarehouseCandidates` + `getOrderQuote`), but run inside a single DB transaction and, only if
+  the result is valid, followed by the inventory decrements + order creation, all through that same
+  transaction's client (see "Database" below for how atomicity works).
+- `getOrderService` (ticket 14) — thin read-only wrapper over `orderRepository.getOrderByNumber`;
+  never recalculates anything.
+
+**`domain/`** — core types (`Item`, `Warehouse`, `Inventory`, `OrderQuote`, `Order`, `Money`, ...),
+request validation schemas (zod), `errors.ts` (every `AppError` subclass — `ValidationError`,
+`OrderSubmissionError`, `InsufficientStockError`, `IdempotencyKeyReusedError`, `OrderNotFoundError`
+— each carrying its own HTTP status + error code, ticket 15), `pricing.ts` (subtotal/discount),
+`distance.ts` (Haversine), `shipping.ts` (per-allocation cost + multi-warehouse sum), `allocation.ts`
+(greedy lowest-cost multi-warehouse fulfillment), and `validity.ts` (the 15% shipping-cost rule).
+
+**`repositories/`** — `warehouseRepository` (warehouse + inventory data access, incl.
+`decrementInventory`) and `orderRepository` (ticket 10: persists an already-computed `OrderQuote`
+as an `Order` + its allocations, generates a unique order number). Every function takes an optional
+`executor` (pool or an already-checked-out transaction client) so ticket 11 can run several of
+these calls as one atomic unit.
+
+**`infrastructure/`**
+- `db/` — pg `Pool` (ticket 17: pool size + timeouts from config), schema (DDL), migrate, seed, and
+  `transaction.ts`'s `withTransaction()` — the `BEGIN`/`COMMIT`/`ROLLBACK` wrapper used by ticket
+  11, now also recording `transaction_outcomes_total` / `database_operation_duration_seconds`.
+- `gracefulShutdown.ts` (ticket 17) — dependency-injected `SIGTERM`/`SIGINT` handler (`server.close`
+  → `closePool` → `exit(0)`, or force-exit `1` on timeout) — see `server.ts`.
+
+**`observability/`** (ticket 17) — `logger.ts` (pino instance) and `metrics.ts` (prom-client
+registry + metric definitions).
+
+**`middleware/`**
+- `errorHandler` (ticket 15) — the ONLY place an error becomes an HTTP response; registered first
+  in `app.ts` so it wraps everything else.
+- `validateBody` — throws a typed `ValidationError` on a bad request body rather than shaping a
+  response itself, same as every other layer.
+- `requestContext` (ticket 17) — assigns/echoes `X-Request-Id`, attaches a per-request child logger
+  to `ctx.state.log`, and records HTTP metrics; wraps `errorHandler` so it observes the final
+  post-error-handling status.
 
 ### API
 
@@ -212,137 +220,10 @@ services never set `ctx.status`/`ctx.body` for a failure themselves, they just t
 `AppError` subclass (`src/domain/errors.ts`) and let it propagate. `errorHandler` is registered
 first in `app.ts` so Koa's onion model wraps every other middleware inside its `try/catch`.
 
-### Test strategy (ticket 16)
 
-Unit/service/repository/middleware tests are **co-located** next to the file they test (e.g.
-`src/domain/pricing.ts` + `src/domain/pricing.test.ts`, right beside it) — only true integration
-tests (an HTTP flow spanning many files, not one function) live separately, under
-`tests/integration/`. `vitest.config.ts`'s `include` picks up both `src/**/*.test.ts` and
-`tests/**/*.test.ts`; `tsconfig.build.json` explicitly excludes `src/**/*.test.ts` so none of it
-ends up in the production build.
+// TODO: next 
+- autogen API Spec
+- apply ORM database
+- integrate test with cucumber
+- cleaning the comment from AI
 
-- **Unit tests** (`src/domain/*.test.ts`) — every pure business-logic module in isolation, no
-  database, no HTTP: volume discount (`pricing.test.ts`), Haversine distance
-  (`distance.test.ts`), shipping cost (`shipping.test.ts`), warehouse allocation
-  (`allocation.test.ts`), the 15% validity rule (`validity.test.ts`), plus `money.test.ts` and
-  `validation/orderRequest.schema.test.ts`. These are the cheapest, fastest, highest-signal tests
-  in the suite — `npm run coverage` currently reports **100% line/statement coverage on every
-  file in `src/domain/`** (99.4% overall across all of `src/`; the only gaps are defensive guards
-  for conditions that can't occur given how the code is actually called — e.g.
-  `decrementInventory` rejecting a non-positive quantity no internal caller would ever pass — not
-  gaps in tested *behavior*).
-- **Repository/service/middleware tests** (`src/repositories/*.test.ts`,
-  `src/application/*.test.ts`, `src/middleware/*.test.ts`, `src/infrastructure/db/*.test.ts`) —
-  real Postgres, exercising transaction/concurrency/persistence behavior directly (e.g. the
-  concurrent-decrement and rollback-of-an-earlier-successful-write tests) without the overhead of
-  going through HTTP for every case.
-- **Integration tests** (`tests/integration/`) — full HTTP requests (`supertest`) against all
-  three endpoints, backed by the real database. `orderLifecycle.api.test.ts` specifically chains
-  quote -> submit -> get for the same request across every discount-tier boundary quantity (1, 24,
-  25, 49, 50, 99, 100, 249, 250), asserting the three responses agree with each other — not just
-  that each endpoint works in isolation.
-- All 18 of the ticket's named critical scenarios are covered: the 9 boundary quantities above;
-  single- and multi-warehouse fulfillment; insufficient stock; shipping exactly at 15% (both at
-  the domain level, `validity.test.ts`, and through real HTTP requests,
-  `orderLifecycle.api.test.ts`) and above it; concurrent inventory deductions
-  (`warehouseRepository.test.ts`, `orderSubmissionService.test.ts`); transaction rollback
-  (`transaction.test.ts` proves the general mechanism, `orderSubmissionService.test.ts` proves it
-  for a multi-line order where an earlier line's decrement had already "succeeded"); idempotent
-  retry, concurrent retry, and mismatched-key reuse (tickets 13/15's tests); and the historical
-  price snapshot surviving a simulated pricing-rule change (`orderRepository.test.ts`,
-  `getOrderService.test.ts`, `getOrder.api.test.ts`).
-- Multiple test files share one real Postgres `orders_test` database, each resetting it in
-  `beforeEach` (`tests/helpers/db.ts`). Vitest's default is to run test *files* in parallel, which
-  let two files' resets/queries race each other against those shared tables — `vitest.config.ts`
-  sets `fileParallelism: false` to serialize file execution and remove that race.
-- Determinism: no test depends on wall-clock timing to pass. Where a scenario is inherently
-  timing-sensitive (two submissions racing for the same stock or idempotency key), the test
-  asserts the *outcome* (final stock, exactly one order created) rather than which of two valid
-  code paths produced it — see the comments in `orderSubmissionService.test.ts`'s concurrency
-  tests for why a real-database race can validly resolve either way run to run.
-
-### Database
-
-- **Engine**: PostgreSQL, via `pg` (no ORM — raw parameterized SQL) so query/locking behavior stays
-  explicit.
-- **Concurrency**: `warehouseRepository.decrementInventory` uses a single guarded `UPDATE ...
-  WHERE stock >= $1` statement — atomic by construction, so concurrent deductions can never oversell
-  a warehouse's stock without needing an explicit transaction/row lock (verified by a concurrency
-  test in `src/repositories/warehouseRepository.test.ts`).
-- **Order numbers**: generated from a standalone Postgres sequence (`order_number_seq`), whose
-  `nextval()` is atomic under concurrent callers with no application-level locking — verified by a
-  25-concurrent-creation test in `src/repositories/orderRepository.test.ts`. Formatted as
-  `ORD-<7-digit sequence value>`; also enforced `UNIQUE` at the schema level as a backstop.
-- **Snapshot principle**: `orderRepository.createOrder` persists exactly the `OrderQuote` it's
-  given — it never recalculates pricing/discount/shipping, so a later change to discount tiers or
-  the shipping rate can't retroactively alter a historical order (ticket 10). Every repository
-  function accepts an optional `executor` (a pool or an already-checked-out transaction client),
-  which is exactly how ticket 11 composes them.
-- **Atomic submission** (ticket 11): `orderSubmissionService.submitOrder` wraps the whole flow —
-  re-reading inventory, recalculating price/allocation/validity, decrementing stock per
-  allocation line, and creating the order — in a single `withTransaction` call
-  (`infrastructure/db/transaction.ts`). It never trusts a client-supplied price, discount,
-  shipping, or allocation (the input is only `quantity`/`shippingAddress` — there's nothing else
-  to trust). If the recalculated order is invalid, or a concurrent submission wins a race for the
-  same stock (a guarded decrement affecting 0 rows), the whole transaction rolls back — including
-  any decrements already applied earlier in the same call — so a failed submission never leaves
-  partial inventory changes or an orphaned order row. Verified against a real database in
-  `src/application/orderSubmissionService.test.ts` (single/multi-warehouse success, insufficient
-  stock, shipping >15%, concurrent conflicts) and `src/infrastructure/db/transaction.test.ts`
-  (the rollback mechanism itself, isolated from order-specific logic).
-- **Idempotency** (ticket 13): an `idempotency_keys` table (`key TEXT PRIMARY KEY`, `order_number`
-  referencing `orders`) maps a client's `Idempotency-Key` to the order it produced.
-  `orderRepository.recordIdempotencyKey` is called with the *same* transaction client as the
-  `createOrder` call it's claiming a key for, so the claim and the order live or die together —
-  a rolled-back submission (business rejection, lost inventory race) never leaves a key claimed,
-  so retrying that same key is a fresh attempt, not a permanent dead end. The PRIMARY KEY
-  constraint is what actually resolves *concurrent* submissions using the same key (identical to
-  how `order_number_seq`/`decrementInventory` resolve their own races): whichever transaction's
-  claim commits first wins; the loser's whole transaction rolls back (including its own inventory
-  decrements) and `orderSubmissionService.submitOrder` transparently returns the winner's order
-  instead of erroring — both callers see the same successful result. Verified in
-  `src/repositories/orderRepository.test.ts` (the constraint itself),
-  `src/application/orderSubmissionService.test.ts`, and
-  `tests/integration/orderSubmission.api.test.ts` (sequential replay, concurrent same-key racing,
-  and a failed attempt not blocking a later retry with the same key).
-- **v1 scope**: `inventory` is keyed by warehouse only (no item column) — there's exactly one SKU
-  for v1. The domain-level `Inventory` type still carries an `itemId` (`DEFAULT_ITEM_ID`) for
-  forward compatibility if multi-SKU support is added later.
-
-### Observability & production readiness (ticket 17)
-
-- **Structured logging**: [`pino`](https://getpino.io/), one JSON object per line. Every request
-  gets a child logger (`ctx.state.log`) tagged with its `requestId`, so all log lines for one
-  request can be correlated. `databaseUrl` and any `password` field are redacted automatically. Set
-  verbosity with `LOG_LEVEL` (default `info`; tests run with `LOG_LEVEL=silent`).
-- **Correlation IDs**: every response carries an `X-Request-Id` header — echoed back if the client
-  sent one, otherwise generated (`crypto.randomUUID()`). Included in every log line for that
-  request, so a client-reported issue can be traced straight to its server-side logs.
-- **Metrics**: [`prom-client`](https://github.com/siimon/prom-client), exposed at `GET /metrics` in
-  Prometheus text format — default Node process metrics (CPU, memory, event-loop lag) plus
-  application metrics: `http_requests_total`/`http_request_duration_seconds` (by method, route
-  *pattern* — not raw path, to keep label cardinality bounded — and status), `quote_requests_total`,
-  `submit_requests_total`, `orders_successful_total`, `orders_rejected_total` (by rejection reason),
-  `inventory_conflicts_total`, `transaction_outcomes_total` (committed/rolled_back), and
-  `database_operation_duration_seconds`.
-- **Liveness vs. readiness**: `GET /health` (unchanged since ticket 01) never touches the database —
-  it only answers "is the process alive." `GET /ready` additionally pings Postgres and returns `503`
-  (`{"status":"not ready","reason":"database unavailable"}`, no internal error detail leaked) if it's
-  unreachable — the signal an orchestrator should use to decide whether to route traffic to this
-  instance.
-- **Graceful shutdown**: on `SIGTERM`/`SIGINT` the server stops accepting new connections
-  (`server.close()`), then closes the database pool, then exits `0`. If that doesn't finish within
-  `SHUTDOWN_TIMEOUT_MS` (default 10s), it force-exits `1` instead of hanging. Implemented as a pure,
-  dependency-injected function (`src/infrastructure/gracefulShutdown.ts`) so it's unit-testable
-  without a real server or database.
-- **Connection-pool & timeout configuration**: all environment-configurable, see `.env.example` —
-  `DB_POOL_MAX`, `DB_IDLE_TIMEOUT_MS`, `DB_CONNECTION_TIMEOUT_MS`, `DB_STATEMENT_TIMEOUT_MS`
-  (Postgres-enforced per-query timeout, server-side), `REQUEST_TIMEOUT_MS`/`HEADERS_TIMEOUT_MS`
-  (Node's `http.Server` timeouts), `SHUTDOWN_TIMEOUT_MS`.
-- **Docker**: multi-stage `Dockerfile` (`node:20-alpine`, deps → build → production, non-root
-  user, `npm ci --omit=dev` in the final stage).
-
-  ```bash
-  docker build -t order-management-service .
-  docker compose up --build app   # runs the built image against the docker-compose `db` service
-  ```

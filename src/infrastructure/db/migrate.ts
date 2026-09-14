@@ -1,6 +1,34 @@
+import { MIGRATIONS } from "./migrations";
 import { getPool } from "./pool";
-import { SCHEMA_SQL } from "./schema";
+import { withTransaction } from "./transaction";
 
+const MIGRATIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id          TEXT PRIMARY KEY,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)`;
+
+/**
+ * Applies every migration from migrations/index.ts that schema_migrations doesn't already record,
+ * in order, each in its own transaction alongside the row that marks it applied — so a failure
+ * partway through a migration never leaves it half-applied-but-unmarked (it just retries next
+ * time). Safe to call on every startup or test reset: an already-applied migration is skipped.
+ */
 export async function migrate(): Promise<void> {
-  await getPool().query(SCHEMA_SQL);
+  const pool = getPool();
+  await pool.query(MIGRATIONS_TABLE_SQL);
+
+  const { rows } = await pool.query<{ id: string }>("SELECT id FROM schema_migrations");
+  const applied = new Set(rows.map((row) => row.id));
+
+  for (const migration of MIGRATIONS) {
+    if (applied.has(migration.id)) continue;
+
+    await withTransaction(async (client) => {
+      for (const statement of migration.statements) {
+        await client.query(statement);
+      }
+      await client.query("INSERT INTO schema_migrations (id) VALUES ($1)", [migration.id]);
+    }, `migration:${migration.id}`);
+  }
 }

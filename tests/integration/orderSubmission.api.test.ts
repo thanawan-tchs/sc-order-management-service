@@ -112,11 +112,11 @@ describe("POST /v1/orders", () => {
       .send({ quantity: -5, shippingAddress: { latitude: 999, longitude: -74.006 } });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe("VALIDATION_ERROR");
+    expect(response.body.error.code).toBe("INVALID_QUANTITY");
     expect(await countOrders()).toBe(before);
   });
 
-  it("returns 422 for insufficient stock, and leaves inventory untouched", async () => {
+  it("returns 422 with code INSUFFICIENT_STOCK, and leaves inventory untouched", async () => {
     await zeroOutStock(ALL_WAREHOUSE_IDS);
     await repositionWarehouse(NEW_YORK_ID, NYC, 10, 5);
     const before = await countOrders();
@@ -126,13 +126,12 @@ describe("POST /v1/orders", () => {
       .send({ quantity: 100, shippingAddress: NYC });
 
     expect(response.status).toBe(422);
-    expect(response.body.error).toBe("ORDER_INVALID");
-    expect(response.body.invalidReasons).toEqual(["INSUFFICIENT_STOCK"]);
+    expect(response.body.error.code).toBe("INSUFFICIENT_STOCK");
     expect((await getInventory(NEW_YORK_ID))?.stock).toBe(5);
     expect(await countOrders()).toBe(before);
   });
 
-  it("returns 422 for shipping cost exceeding 15%, and leaves inventory untouched", async () => {
+  it("returns 422 with code SHIPPING_COST_EXCEEDS_15_PERCENT, and leaves inventory untouched", async () => {
     await zeroOutStock(ALL_WAREHOUSE_IDS);
     // qty 1 (no discount, 15% limit = 2250 cents); round(10000km * 0.365kg * 1c) = 3650 cents.
     await repositionWarehouse(NEW_YORK_ID, NYC, 10000, 10);
@@ -141,8 +140,7 @@ describe("POST /v1/orders", () => {
     const response = await request(app.callback()).post("/v1/orders").send({ quantity: 1, shippingAddress: NYC });
 
     expect(response.status).toBe(422);
-    expect(response.body.error).toBe("ORDER_INVALID");
-    expect(response.body.invalidReasons).toEqual(["SHIPPING_COST_EXCEEDS_15_PERCENT"]);
+    expect(response.body.error.code).toBe("SHIPPING_COST_EXCEEDS_15_PERCENT");
     expect((await getInventory(NEW_YORK_ID))?.stock).toBe(10);
     expect(await countOrders()).toBe(before);
   });
@@ -263,6 +261,26 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     expect(b.status).toBe(201);
     expect(a.body.orderNumber).toBe(b.body.orderNumber);
     expect(await countOrders()).toBe(before + 1);
+    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
+  });
+
+  it("returns 409 IDEMPOTENCY_KEY_REUSED when the same key is sent with a different request body", async () => {
+    await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
+
+    const first = await request(app.callback())
+      .post("/v1/orders")
+      .set("Idempotency-Key", "http-reused-key")
+      .send({ quantity: 20, shippingAddress: NYC });
+    expect(first.status).toBe(201);
+
+    const second = await request(app.callback())
+      .post("/v1/orders")
+      .set("Idempotency-Key", "http-reused-key")
+      .send({ quantity: 21, shippingAddress: NYC });
+
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    expect(await countOrders()).toBe(1);
     expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
   });
 });

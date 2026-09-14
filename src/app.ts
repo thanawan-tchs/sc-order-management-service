@@ -1,5 +1,6 @@
 import Koa from "koa";
 import bodyParser from "koa-bodyparser";
+import { errorHandler } from "./middleware/errorHandler";
 import router from "./routes";
 
 /**
@@ -9,6 +10,9 @@ import router from "./routes";
 export function createApp(): Koa {
   const app = new Koa();
 
+  // Registered first so it wraps every other middleware (Koa's onion model) — the single place
+  // an error thrown anywhere downstream becomes an HTTP response (ticket 15).
+  app.use(errorHandler);
   app.use(bodyParser());
   app.use(router.routes());
   app.use(router.allowedMethods());

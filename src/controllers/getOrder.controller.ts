@@ -1,5 +1,6 @@
 import { Context } from "koa";
 import * as getOrderService from "../application/getOrderService";
+import { OrderNotFoundError } from "../domain/errors";
 import { Order } from "../domain/types";
 
 interface OrderDetailResponseBody {
@@ -57,23 +58,20 @@ function toOrderDetailResponse(order: Order): OrderDetailResponseBody {
 
 /**
  * GET /v1/orders/:orderNumber. Controller responsibilities per ticket 14: read the :orderNumber
- * route param, ask the application service for it, map the result (or its absence) to an HTTP
- * response. Returns exactly the persisted snapshot — no recalculation happens anywhere in this
- * path (see getOrderService.ts).
+ * route param, ask the application service for it, map the result to an HTTP response. Returns
+ * exactly the persisted snapshot — no recalculation happens anywhere in this path (see
+ * getOrderService.ts).
  *
- * `200` with the order when found; `404` when no order exists with that order number.
+ * `200` with the order when found. When not found, throws `OrderNotFoundError` rather than
+ * setting `ctx.status`/`ctx.body` directly — the central error middleware (ticket 15) is the only
+ * place that turns an error into a response, so it maps this to `404` there.
  */
 export async function getOrder(ctx: Context): Promise<void> {
   const { orderNumber } = ctx.params;
   const order = await getOrderService.getOrder(orderNumber);
 
   if (!order) {
-    ctx.status = 404;
-    ctx.body = {
-      error: "ORDER_NOT_FOUND",
-      message: `No order found with order number "${orderNumber}".`,
-    };
-    return;
+    throw new OrderNotFoundError(orderNumber);
   }
 
   ctx.status = 200;

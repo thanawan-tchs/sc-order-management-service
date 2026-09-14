@@ -63,19 +63,19 @@ describe("GET /v1/orders/:orderNumber", () => {
     expect(new Date(response.body.createdAt).toString()).not.toBe("Invalid Date");
   });
 
-  it("returns 404 with a consistent error shape for an unknown order number", async () => {
+  it("returns 404 with ticket 15's error contract for an unknown order number", async () => {
     const response = await request(app.callback()).get("/v1/orders/ORD-9999999");
 
     expect(response.status).toBe(404);
-    expect(response.body.error).toBe("ORDER_NOT_FOUND");
-    expect(typeof response.body.message).toBe("string");
+    expect(response.body.error.code).toBe("ORDER_NOT_FOUND");
+    expect(typeof response.body.error.message).toBe("string");
   });
 
   it("returns 404 for a garbage order number, not a 500", async () => {
     const response = await request(app.callback()).get("/v1/orders/not-a-real-format");
 
     expect(response.status).toBe(404);
-    expect(response.body.error).toBe("ORDER_NOT_FOUND");
+    expect(response.body.error.code).toBe("ORDER_NOT_FOUND");
   });
 
   it("returns the full allocation set for a multi-warehouse order", async () => {

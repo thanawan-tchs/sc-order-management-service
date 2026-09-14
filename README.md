@@ -2,11 +2,11 @@
 
 ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
-> Status: Tickets 01–14 (project bootstrap, domain models & request validation, warehouse/inventory
+> Status: Tickets 01–15 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost
 > warehouse allocation, order quote application service, `POST /v1/orders/quote`, order
 > persistence & order numbers, atomic order submission, `POST /v1/orders`, idempotency &
-> concurrency protection, `GET /v1/orders/:orderNumber`). See
+> concurrency protection, `GET /v1/orders/:orderNumber`, centralized API error handling). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
 
@@ -88,11 +88,13 @@ src/
                         # getOrderService (ticket 14) — thin read-only wrapper over
                         # orderRepository.getOrderByNumber; never recalculates anything.
   domain/              # core types (Item, Warehouse, Inventory, OrderQuote, Order, Money, ...),
-                        # request validation schemas (zod), domain error types (including
-                        # OrderSubmissionError), pricing.ts (subtotal/discount), distance.ts
-                        # (Haversine), shipping.ts (per-allocation cost + multi-warehouse sum),
-                        # allocation.ts (greedy lowest-cost multi-warehouse fulfillment), and
-                        # validity.ts (the 15% shipping-cost rule).
+                        # request validation schemas (zod), errors.ts (every AppError subclass —
+                        # ValidationError, OrderSubmissionError, InsufficientStockError,
+                        # IdempotencyKeyReusedError, OrderNotFoundError — each carrying its own
+                        # HTTP status + error code, ticket 15), pricing.ts (subtotal/discount),
+                        # distance.ts (Haversine), shipping.ts (per-allocation cost +
+                        # multi-warehouse sum), allocation.ts (greedy lowest-cost multi-warehouse
+                        # fulfillment), and validity.ts (the 15% shipping-cost rule).
   repositories/        # warehouseRepository (warehouse + inventory data access, incl.
                         # decrementInventory) and orderRepository (ticket 10: persists an
                         # already-computed OrderQuote as an Order + its allocations, generates a
@@ -102,8 +104,10 @@ src/
   infrastructure/
     db/                # pg Pool, schema (DDL), migrate, seed, and transaction.ts's
                         # withTransaction() — BEGIN/COMMIT/ROLLBACK wrapper used by ticket 11
-  middleware/          # validateBody — generic Koa validation middleware, reused by every
-                        # write endpoint. Error-handling middleware lands in a later ticket.
+  middleware/          # errorHandler (ticket 15) — the ONLY place an error becomes an HTTP
+                        # response; registered first in app.ts so it wraps everything else.
+                        # validateBody — throws a typed ValidationError on a bad request body
+                        # rather than shaping a response itself, same as every other layer.
   config/              # environment/config loading, seed data
   utils/                # (empty — shared helpers as needed)
 tests/
@@ -161,6 +165,27 @@ when found, `404` (`ORDER_NOT_FOUND`) otherwise.
 ```bash
 curl http://localhost:3000/v1/orders/ORD-0000001
 ```
+
+### Error handling
+
+Every error response across all three endpoints has the same shape (ticket 15):
+
+```json
+{ "error": { "code": "INSUFFICIENT_STOCK", "message": "Order cannot be submitted: INSUFFICIENT_STOCK" } }
+```
+
+| Status | Codes |
+|---|---|
+| 400 | `INVALID_QUANTITY`, `INVALID_LATITUDE`, `INVALID_LONGITUDE`, `VALIDATION_ERROR` (generic fallback, e.g. a missing `shippingAddress`) |
+| 404 | `ORDER_NOT_FOUND` |
+| 409 | `INVENTORY_CONFLICT` (a concurrent submission won a live race for the same stock), `IDEMPOTENCY_KEY_REUSED` (the same `Idempotency-Key` was sent with a different `quantity`/`shippingAddress` than the request it was originally claimed for — a *matching* retry is not an error, see ticket 13) |
+| 422 | `INSUFFICIENT_STOCK`, `SHIPPING_COST_EXCEEDS_15_PERCENT` (the recalculated order fails a business rule) |
+| 500 | `INTERNAL_SERVER_ERROR` — anything unexpected. The real error (message, stack) is logged server-side via `console.error`; the client never sees more than this generic code/message, regardless of what actually failed (a bug, a database outage, whatever) |
+
+All of this is decided in exactly one place, `src/middleware/errorHandler.ts` — controllers and
+services never set `ctx.status`/`ctx.body` for a failure themselves, they just throw a typed
+`AppError` subclass (`src/domain/errors.ts`) and let it propagate. `errorHandler` is registered
+first in `app.ts` so Koa's onion model wraps every other middleware inside its `try/catch`.
 
 ### Testing notes
 

@@ -91,22 +91,23 @@ describe("POST /v1/orders/quote", () => {
     expect(response.body.invalidReason).toBe("SHIPPING_COST_EXCEEDS_15_PERCENT");
   });
 
-  it("returns 400 for a malformed request, with a consistent validation error shape", async () => {
+  it("returns 400 with INVALID_QUANTITY for a malformed request (ticket 15's error contract)", async () => {
+    // quantity fails validation AND latitude does too — quantity is listed first in the schema,
+    // so it's the one reported (see validateBody.ts's "first issue wins" comment).
     const response = await request(app.callback())
       .post("/v1/orders/quote")
       .send({ quantity: -5, shippingAddress: { latitude: 999, longitude: -74.006 } });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe("VALIDATION_ERROR");
-    expect(Array.isArray(response.body.details)).toBe(true);
-    expect(response.body.details.length).toBeGreaterThan(0);
+    expect(response.body.error.code).toBe("INVALID_QUANTITY");
+    expect(typeof response.body.error.message).toBe("string");
   });
 
-  it("returns 400 for a missing shippingAddress", async () => {
+  it("returns 400 with the generic VALIDATION_ERROR code for a missing shippingAddress", async () => {
     const response = await request(app.callback()).post("/v1/orders/quote").send({ quantity: 10 });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe("VALIDATION_ERROR");
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("has no side effects: warehouse stock is unchanged after quoting", async () => {

@@ -1,5 +1,6 @@
-import { IdempotencyKeyConflictError, OrderSubmissionError } from "../domain/errors";
+import { IdempotencyKeyConflictError, IdempotencyKeyReusedError, OrderSubmissionError } from "../domain/errors";
 import { Order, ShippingAddress } from "../domain/types";
+import { QueryExecutor } from "../infrastructure/db/pool";
 import { withTransaction } from "../infrastructure/db/transaction";
 import {
   createOrder,
@@ -18,11 +19,47 @@ export interface OrderSubmissionInput {
 }
 
 /**
- * Ticket 11/13: atomic, idempotent order submission.
+ * True if `existing` (the order a key was already claimed for) matches what THIS request is
+ * asking for. A matching retry is the normal case (ticket 13) — return the cached order. A
+ * mismatch means the same key is being reused for a genuinely different order (ticket 15) —
+ * that's a client bug worth surfacing, not something to silently paper over by either creating a
+ * second order or returning the wrong one.
+ */
+function matchesClaimedOrder(existing: Order, input: OrderSubmissionInput): boolean {
+  return (
+    existing.quantity === input.quantity &&
+    existing.shippingAddress.latitude === input.shippingAddress.latitude &&
+    existing.shippingAddress.longitude === input.shippingAddress.longitude
+  );
+}
+
+/**
+ * Looks up whatever order (if any) `idempotencyKey` was already claimed for, and either returns
+ * it (request matches) or throws `IdempotencyKeyReusedError` (request doesn't match — ticket 15).
+ * Returns `undefined` when the key hasn't been claimed at all, so the caller proceeds normally.
+ */
+async function checkIdempotencyKey(
+  idempotencyKey: string,
+  input: OrderSubmissionInput,
+  executor?: QueryExecutor
+): Promise<Order | undefined> {
+  const existing = await findOrderByIdempotencyKey(idempotencyKey, executor);
+  if (!existing) return undefined;
+
+  if (!matchesClaimedOrder(existing, input)) {
+    throw new IdempotencyKeyReusedError(idempotencyKey);
+  }
+  return existing;
+}
+
+/**
+ * Ticket 11/13/15: atomic, idempotent order submission.
  *
- *   (fast path) already claimed by this idempotency key? -> return that order, no transaction
+ *   (fast path) key already claimed?
+ *     -> matches this request -> return that order, no transaction
+ *     -> doesn't match -> throw IdempotencyKeyReusedError, no transaction
  *   BEGIN
- *     -> (race-closing re-check) already claimed by this key? -> return that order
+ *     -> (race-closing re-check) same check as the fast path, again
  *     -> read current inventory (inside the transaction, via `client`)
  *     -> price + allocate + check the 15% rule — the exact same calculation
  *        `getOrderQuote` uses (ticket 08), just fed inventory read through this transaction's
@@ -38,7 +75,8 @@ export interface OrderSubmissionInput {
  *   COMMIT
  *   (on IdempotencyKeyConflictError) -> the whole transaction above rolled back (including our
  *     own decrements/order); the winner's must have committed for us to have lost the race at
- *     all, so its order now exists — fetch and return it instead of erroring.
+ *     all, so its order now exists — fetch and return it instead of erroring (or throw
+ *     IdempotencyKeyReusedError if even the winner's order doesn't match this request).
  *
  * If any step after BEGIN throws — an invalid recalculated order, a concurrent submission
  * winning the race for the same stock (a guarded decrement affecting 0 rows throws
@@ -51,7 +89,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
   const { idempotencyKey } = input;
 
   if (idempotencyKey) {
-    const existing = await findOrderByIdempotencyKey(idempotencyKey);
+    const existing = await checkIdempotencyKey(idempotencyKey, input);
     if (existing) return existing;
   }
 
@@ -59,7 +97,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
     return await withTransaction(async (client) => {
       if (idempotencyKey) {
         // Closes the window between the fast pre-check above and this transaction starting.
-        const existing = await findOrderByIdempotencyKey(idempotencyKey, client);
+        const existing = await checkIdempotencyKey(idempotencyKey, input, client);
         if (existing) return existing;
       }
 
@@ -85,7 +123,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
     });
   } catch (error) {
     if (idempotencyKey && error instanceof IdempotencyKeyConflictError) {
-      const winner = await findOrderByIdempotencyKey(idempotencyKey);
+      const winner = await checkIdempotencyKey(idempotencyKey, input);
       if (winner) return winner;
     }
     throw error;

@@ -4,6 +4,7 @@ import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
 import request from "supertest";
 import { z } from "zod";
+import { errorHandler } from "../../src/middleware/errorHandler";
 import { validateBody } from "../../src/middleware/validateBody";
 
 const schema = z.object({ quantity: z.number().int().positive() });
@@ -17,6 +18,10 @@ function buildTestApp() {
     ctx.body = { received: ctx.state.validated };
   });
 
+  // Real usage always mounts validateBody behind the central error handler (see app.ts) — it
+  // throws rather than setting ctx.status/body itself (ticket 15), so a test app needs the same
+  // middleware to see the same 400 response a real request would get.
+  app.use(errorHandler);
   app.use(bodyParser());
   app.use(router.routes());
   app.use(router.allowedMethods());
@@ -34,15 +39,14 @@ describe("validateBody middleware", () => {
     expect(response.body).toEqual({ received: { quantity: 10 } });
   });
 
-  it("short-circuits with 400 and validation details on invalid input", async () => {
+  it("throws a ValidationError that the central error handler turns into 400 INVALID_QUANTITY", async () => {
     const app = buildTestApp();
 
     const response = await request(app.callback()).post("/test").send({ quantity: -1 });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe("VALIDATION_ERROR");
-    expect(Array.isArray(response.body.details)).toBe(true);
-    expect(response.body.details.length).toBeGreaterThan(0);
+    expect(response.body.error.code).toBe("INVALID_QUANTITY");
+    expect(typeof response.body.error.message).toBe("string");
   });
 
   it("never calls the downstream handler when validation fails", async () => {
@@ -55,6 +59,7 @@ describe("validateBody middleware", () => {
       ctx.status = 200;
     });
 
+    app.use(errorHandler);
     app.use(bodyParser());
     app.use(router.routes());
 

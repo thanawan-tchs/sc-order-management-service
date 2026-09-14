@@ -1,6 +1,5 @@
 import { Context } from "koa";
 import * as orderSubmissionService from "../application/orderSubmissionService";
-import { InsufficientStockError, OrderSubmissionError } from "../domain/errors";
 import { Order } from "../domain/types";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
 
@@ -58,20 +57,18 @@ function toOrderResponse(order: Order): OrderResponseBody {
 }
 
 /**
- * POST /v1/orders. Controller responsibilities per ticket 12: parse/validate is already done
- * (`validateBody`, same schema as quote — see orders.route.ts), so this only invokes the
- * transactional submission service and maps its outcome to an HTTP response. No pricing or
+ * POST /v1/orders. Controller responsibilities per ticket 12, and nothing more: parse/validate is
+ * already done (`validateBody`, same schema as quote — see orders.route.ts), so this only invokes
+ * the transactional submission service and maps its result to the wire format. No pricing or
  * allocation logic belongs here — in particular, nothing from the request body reaches
  * `orderSubmissionService.submitOrder` except `quantity`/`shippingAddress`, so a client has no
  * price/discount/shipping/allocation field to override in the first place.
  *
- * Status codes: `201` on success; `422` when the recalculated order fails a business rule
- * (`OrderSubmissionError` — insufficient stock and/or shipping over 15%, ticket 08's reasons);
- * `409` when a concurrent submission wins a race for the same stock after this one was otherwise
- * valid (`InsufficientStockError` surfacing directly from a live conflict, ticket 11) — a
- * transient, retry-friendly conflict, distinct from a durable business rejection. `400` for a
- * malformed request is handled entirely by `validateBody` upstream; this handler is never reached
- * for that case.
+ * No try/catch here (ticket 15): `submitOrder` throws typed `AppError`s (`OrderSubmissionError`
+ * for a business rejection, `InsufficientStockError` for a live inventory conflict,
+ * `IdempotencyKeyReusedError` for a mismatched key reuse) — they propagate to the central error
+ * middleware, which is the only place that turns an error into a status/body. `400` for a
+ * malformed request is handled the same way, entirely by `validateBody` upstream.
  */
 export async function submitOrder(ctx: Context): Promise<void> {
   const input = ctx.state.validated as OrderRequestInput;
@@ -79,29 +76,7 @@ export async function submitOrder(ctx: Context): Promise<void> {
   // header is treated the same as no header at all (ticket 13's Idempotency-Key is optional).
   const idempotencyKey = ctx.get("Idempotency-Key").trim() || undefined;
 
-  let order: Order;
-  try {
-    order = await orderSubmissionService.submitOrder({ ...input, idempotencyKey });
-  } catch (error) {
-    if (error instanceof OrderSubmissionError) {
-      ctx.status = 422;
-      ctx.body = {
-        error: "ORDER_INVALID",
-        message: error.message,
-        invalidReasons: error.invalidReasons,
-      };
-      return;
-    }
-    if (error instanceof InsufficientStockError) {
-      ctx.status = 409;
-      ctx.body = {
-        error: "INVENTORY_CONFLICT",
-        message: "Inventory changed before this order could be fulfilled. Please retry.",
-      };
-      return;
-    }
-    throw error;
-  }
+  const order: Order = await orderSubmissionService.submitOrder({ ...input, idempotencyKey });
 
   ctx.status = 201;
   ctx.body = toOrderResponse(order);

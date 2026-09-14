@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { submitOrder } from "../../src/application/orderSubmissionService";
-import { InsufficientStockError, OrderSubmissionError } from "../../src/domain/errors";
+import { IdempotencyKeyReusedError, InsufficientStockError, OrderSubmissionError } from "../../src/domain/errors";
 import { closePool, getPool } from "../../src/infrastructure/db/pool";
 import { findOrderByIdempotencyKey, getOrderByNumber } from "../../src/repositories/orderRepository";
 import { getInventory } from "../../src/repositories/warehouseRepository";
@@ -328,5 +328,56 @@ describe("submitOrder — idempotency (ticket 13)", () => {
       expect(isExpectedErrorType).toBe(true);
     }
     expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(2);
+  });
+});
+
+describe("submitOrder — idempotency key reused for a different request (ticket 15)", () => {
+  it("rejects a key reused with a different quantity", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+
+    await submitOrder({ quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "reused-key-1" });
+
+    await expect(
+      submitOrder({ quantity: 21, shippingAddress: DESTINATION, idempotencyKey: "reused-key-1" })
+    ).rejects.toBeInstanceOf(IdempotencyKeyReusedError);
+
+    // The original order is untouched, and no second order/decrement happened.
+    expect(await countOrders()).toBe(1);
+    expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(80);
+  });
+
+  it("rejects a key reused with a different shipping address", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+    const otherAddress = { latitude: 10, longitude: 10 };
+
+    await submitOrder({ quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "reused-key-2" });
+
+    await expect(
+      submitOrder({ quantity: 20, shippingAddress: otherAddress, idempotencyKey: "reused-key-2" })
+    ).rejects.toBeInstanceOf(IdempotencyKeyReusedError);
+
+    expect(await countOrders()).toBe(1);
+  });
+
+  it("still accepts a genuinely matching retry (same quantity and address) after a mismatch was rejected", async () => {
+    await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
+
+    const original = await submitOrder({
+      quantity: 20,
+      shippingAddress: DESTINATION,
+      idempotencyKey: "reused-key-3",
+    });
+    await expect(
+      submitOrder({ quantity: 99, shippingAddress: DESTINATION, idempotencyKey: "reused-key-3" })
+    ).rejects.toBeInstanceOf(IdempotencyKeyReusedError);
+
+    const matchingRetry = await submitOrder({
+      quantity: 20,
+      shippingAddress: DESTINATION,
+      idempotencyKey: "reused-key-3",
+    });
+
+    expect(matchingRetry).toEqual(original);
+    expect(await countOrders()).toBe(1);
   });
 });

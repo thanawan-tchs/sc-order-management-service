@@ -6,8 +6,8 @@ import {
   OrderSubmissionError,
 } from "../domain/errors";
 import { closePool, getPool } from "../infrastructure/db/pool";
-import { findOrderByIdempotencyKey, getOrderByNumber } from "../repositories/orderRepository";
-import { getInventory } from "../repositories/warehouseRepository";
+import * as orderRepository from "../repositories/orderRepository";
+import * as warehouseRepository from "../repositories/warehouseRepository";
 import { resetTestDb } from "../../tests/helpers/db";
 import { pointAtDistanceFrom } from "../../tests/helpers/geo";
 
@@ -91,11 +91,11 @@ describe("submitOrder — successful submission", () => {
     ]);
     expect(order.valid).toBe(true);
 
-    const inventory = await getInventory(LOS_ANGELES_ID, itemId);
+    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
     expect(inventory?.stock).toBe(80);
 
     // Actually persisted, not just returned.
-    const fetched = await getOrderByNumber(order.orderNumber);
+    const fetched = await orderRepository.getOrderByNumber(order.orderNumber);
     expect(fetched).toEqual(order);
   });
 
@@ -117,8 +117,8 @@ describe("submitOrder — successful submission", () => {
       ])
     );
 
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(95);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(95);
   });
 });
 
@@ -133,7 +133,7 @@ describe("submitOrder — invalid orders never touch inventory or create a row",
       submitOrder({ itemId: itemId, quantity: 100, shippingAddress: DESTINATION })
     ).rejects.toBeInstanceOf(OrderSubmissionError);
 
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(5);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(5);
     expect(await countOrders()).toBe(before);
   });
 
@@ -156,7 +156,7 @@ describe("submitOrder — invalid orders never touch inventory or create a row",
     expect((caught as OrderSubmissionError).invalidReasons).toEqual([
       "SHIPPING_COST_EXCEEDS_15_PERCENT",
     ]);
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(10);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(10);
     expect(await countOrders()).toBe(before);
   });
 });
@@ -193,7 +193,7 @@ describe("submitOrder — concurrency", () => {
     }
 
     // Only the winner's deduction persisted; only one order row exists.
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(2);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(2);
     expect(await countOrders()).toBe(before + 1);
   });
 
@@ -248,11 +248,11 @@ describe("submitOrder — concurrency", () => {
       // undone along with the rest of its transaction.
       const winnerPrimaryId = fulfilledIndex === 0 ? LOS_ANGELES_ID : NEW_YORK_ID;
       const loserPrimaryId = fulfilledIndex === 0 ? NEW_YORK_ID : LOS_ANGELES_ID;
-      expect((await getInventory(winnerPrimaryId, itemId))?.stock).toBe(0);
-      expect((await getInventory(loserPrimaryId, itemId))?.stock).toBe(10);
+      expect((await warehouseRepository.getInventory(winnerPrimaryId, itemId))?.stock).toBe(0);
+      expect((await warehouseRepository.getInventory(loserPrimaryId, itemId))?.stock).toBe(10);
 
       // Only the winner's 3-unit draw from the shared warehouse persisted.
-      expect((await getInventory(SAO_PAULO_ID, itemId))?.stock).toBe(2);
+      expect((await warehouseRepository.getInventory(SAO_PAULO_ID, itemId))?.stock).toBe(2);
 
       // Exactly one order was created.
       expect(await countOrders()).toBe(before + 1);
@@ -280,7 +280,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
     expect(second).toEqual(first);
     expect(await countOrders()).toBe(1);
     // Decremented once, not twice.
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
   });
 
   it("treats requests without an idempotency key as always distinct", async () => {
@@ -323,7 +323,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
     expect(await countOrders()).toBe(1);
     // Decremented exactly once, not once per caller — proof the "loser" of the idempotency-key
     // race never applied its own decrement (or had it rolled back if it got that far).
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
   });
 
   it("does not consume the idempotency key on a failed submission — a retry with the same key can still succeed", async () => {
@@ -337,7 +337,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
         idempotencyKey: "retry-after-failure",
       })
     ).rejects.toBeInstanceOf(OrderSubmissionError);
-    expect(await findOrderByIdempotencyKey("retry-after-failure")).toBeUndefined();
+    expect(await orderRepository.findOrderByIdempotencyKey("retry-after-failure")).toBeUndefined();
 
     // Make the order fulfillable and retry with the SAME key — must not be blocked by the
     // earlier failed attempt (ticket 13: "failed transaction does not consume idempotency state").
@@ -351,7 +351,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
 
     expect(order.quantity).toBe(20);
     expect(await countOrders()).toBe(1);
-    expect((await findOrderByIdempotencyKey("retry-after-failure"))?.orderNumber).toBe(
+    expect((await orderRepository.findOrderByIdempotencyKey("retry-after-failure"))?.orderNumber).toBe(
       order.orderNumber
     );
   });
@@ -369,7 +369,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
     expect(order.allocations).toEqual([
       expect.objectContaining({ warehouseId: LOS_ANGELES_ID, quantity: 8 }),
     ]);
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
   });
 
   it("different idempotency keys still correctly compete for the same limited stock (one wins, one fails)", async () => {
@@ -401,7 +401,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
         rejected[0].reason instanceof OrderSubmissionError;
       expect(isExpectedErrorType).toBe(true);
     }
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(2);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(2);
   });
 });
 
@@ -427,7 +427,7 @@ describe("submitOrder — idempotency key reused for a different request (ticket
 
     // The original order is untouched, and no second order/decrement happened.
     expect(await countOrders()).toBe(1);
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
   });
 
   it("rejects a key reused with a different shipping address", async () => {

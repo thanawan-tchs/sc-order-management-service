@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/app";
 import { closePool } from "../../src/infrastructure/db/pool";
-import { getAllWarehouses, getInventory } from "../../src/repositories/warehouseRepository";
+import * as warehouseRepository from "../../src/repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 
 const app = createApp();
@@ -137,8 +137,8 @@ describe("POST /v1/orders/quote", () => {
   });
 
   it("has no side effects: warehouse stock is unchanged after quoting", async () => {
-    const before = await getAllWarehouses();
-    const stockBefore = await Promise.all(before.map((w) => getInventory(w.id, itemId)));
+    const before = await warehouseRepository.getAllWarehouses();
+    const stockBefore = await Promise.all(before.map((w) => warehouseRepository.getInventory(w.id, itemId)));
 
     await request(app.callback())
       .post("/v1/orders/quote")
@@ -148,8 +148,8 @@ describe("POST /v1/orders/quote", () => {
         shippingAddress: { latitude: 40.7128, longitude: -74.006 },
       });
 
-    const after = await getAllWarehouses();
-    const stockAfter = await Promise.all(after.map((w) => getInventory(w.id, itemId)));
+    const after = await warehouseRepository.getAllWarehouses();
+    const stockAfter = await Promise.all(after.map((w) => warehouseRepository.getInventory(w.id, itemId)));
 
     expect(stockAfter).toEqual(stockBefore);
   });

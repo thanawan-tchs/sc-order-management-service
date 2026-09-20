@@ -3,7 +3,7 @@ import { getOrder } from "./getOrderService";
 import { toMoney } from "../domain/money";
 import { Item, OrderQuote } from "../domain/types";
 import { closePool } from "../infrastructure/db/pool";
-import { createOrder } from "../repositories/orderRepository";
+import * as orderRepository from "../repositories/orderRepository";
 import { resetTestDb } from "../../tests/helpers/db";
 
 const LOS_ANGELES_ID = 1;
@@ -45,7 +45,7 @@ afterAll(async () => {
 
 describe("getOrder", () => {
   it("returns the persisted order for an existing order number", async () => {
-    const created = await createOrder(buildQuote());
+    const created = await orderRepository.createOrder(buildQuote());
 
     const found = await getOrder(created.orderNumber);
 
@@ -57,7 +57,7 @@ describe("getOrder", () => {
   });
 
   it("returns a multi-warehouse order's full allocation set", async () => {
-    const created = await createOrder(
+    const created = await orderRepository.createOrder(
       buildQuote({
         quantity: 30,
         allocations: [
@@ -83,7 +83,7 @@ describe("getOrder", () => {
     // quantity — proves this read path never recalculates, only reads what was stored at
     // submission time (ticket 10's Snapshot Principle; ticket 14's "do not recalculate historical
     // pricing, distance, or discount").
-    const created = await createOrder(
+    const created = await orderRepository.createOrder(
       buildQuote({
         quantity: 10,
         discountRate: 0.42,

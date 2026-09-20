@@ -11,8 +11,8 @@ import {
 import { Item, OrderQuote, ShippingAddress } from "../domain/types";
 import { InvalidOrderReason, isShippingCostWithinLimit } from "../domain/validity";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
-import { getItem } from "../repositories/itemRepository";
-import { getAllWarehouses, getInventory } from "../repositories/warehouseRepository";
+import * as itemRepository from "../repositories/itemRepository";
+import * as warehouseRepository from "../repositories/warehouseRepository";
 
 export interface OrderQuoteInput {
   itemId: string;
@@ -41,11 +41,11 @@ export async function readWarehouseCandidates(
   itemId: string,
   executor: QueryExecutor = getPool()
 ): Promise<WarehouseCandidate[]> {
-  const warehouses = await getAllWarehouses(executor);
+  const warehouses = await warehouseRepository.getAllWarehouses(executor);
 
   const candidates: WarehouseCandidate[] = [];
   for (const warehouse of warehouses) {
-    const inventory = await getInventory(warehouse.id, itemId, executor);
+    const inventory = await warehouseRepository.getInventory(warehouse.id, itemId, executor);
     candidates.push({
       warehouseId: warehouse.id,
       latitude: warehouse.latitude,
@@ -62,7 +62,10 @@ export interface OrderQuoteDependencies {
   getItem: (itemId: string) => Promise<Item | undefined>;
 }
 
-const defaultDependencies: OrderQuoteDependencies = { readWarehouseCandidates, getItem };
+const defaultDependencies: OrderQuoteDependencies = {
+  readWarehouseCandidates,
+  getItem: itemRepository.getItem,
+};
 
 /**
  * The complete side-effect-free order verification flow (ticket 08):

@@ -2,8 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/app";
 import { closePool, getPool } from "../../src/infrastructure/db/pool";
-import { getOrderByNumber } from "../../src/repositories/orderRepository";
-import { getAllWarehouses, getInventory } from "../../src/repositories/warehouseRepository";
+import * as orderRepository from "../../src/repositories/orderRepository";
+import * as warehouseRepository from "../../src/repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
 
@@ -91,9 +91,9 @@ describe("POST /v1/orders", () => {
     ]);
 
     // Actually persisted, not just echoed back.
-    const fetched = await getOrderByNumber(response.body.orderNumber);
+    const fetched = await orderRepository.getOrderByNumber(response.body.orderNumber);
     expect(fetched?.quantity).toBe(100);
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(578 - 100);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(578 - 100);
   });
 
   it("returns 201 and splits across multiple warehouses when one alone can't fulfill it", async () => {
@@ -114,8 +114,8 @@ describe("POST /v1/orders", () => {
       ])
     );
 
-    expect((await getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(95);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(95);
   });
 
   it("returns 400 for a malformed request, with a consistent validation error shape, and creates nothing", async () => {
@@ -145,7 +145,7 @@ describe("POST /v1/orders", () => {
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe("INSUFFICIENT_STOCK");
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(5);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(5);
     expect(await countOrders()).toBe(before);
   });
 
@@ -161,7 +161,7 @@ describe("POST /v1/orders", () => {
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe("SHIPPING_COST_EXCEEDS_15_PERCENT");
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(10);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(10);
     expect(await countOrders()).toBe(before);
   });
 
@@ -215,20 +215,20 @@ describe("POST /v1/orders", () => {
     // (422) — see orderSubmissionService.test.ts for why both are legitimate depending on timing.
     expect([409, 422]).toContain(conflicted[0].status);
 
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(2);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(2);
     expect(await countOrders()).toBe(before + 1);
   });
 
   it("has no side effects on the warehouses read endpoint's underlying data when rejected", async () => {
-    const before = await getAllWarehouses();
-    const stockBefore = await Promise.all(before.map((w) => getInventory(w.id, itemId)));
+    const before = await warehouseRepository.getAllWarehouses();
+    const stockBefore = await Promise.all(before.map((w) => warehouseRepository.getInventory(w.id, itemId)));
 
     await request(app.callback())
       .post("/v1/orders")
       .send({ itemId: itemId, quantity: 999999, shippingAddress: NYC });
 
-    const after = await getAllWarehouses();
-    const stockAfter = await Promise.all(after.map((w) => getInventory(w.id, itemId)));
+    const after = await warehouseRepository.getAllWarehouses();
+    const stockAfter = await Promise.all(after.map((w) => warehouseRepository.getInventory(w.id, itemId)));
     expect(stockAfter).toEqual(stockBefore);
   });
 });
@@ -253,7 +253,7 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     expect(second.body).toEqual(first.body);
 
     expect(await countOrders()).toBe(before + 1);
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
   });
 
   it("treats requests with no Idempotency-Key header as always distinct", async () => {
@@ -290,7 +290,7 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     expect(b.status).toBe(201);
     expect(a.body.orderNumber).toBe(b.body.orderNumber);
     expect(await countOrders()).toBe(before + 1);
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
   });
 
   it("returns 409 IDEMPOTENCY_KEY_REUSED when the same key is sent with a different request body", async () => {
@@ -310,6 +310,6 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
     expect(await countOrders()).toBe(1);
-    expect((await getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
   });
 });

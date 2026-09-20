@@ -2,13 +2,9 @@ import { IdempotencyKeyConflictError, IdempotencyKeyReusedError, OrderSubmission
 import { Order, ShippingAddress } from "../domain/types";
 import { QueryExecutor } from "../infrastructure/db/pool";
 import { withTransaction } from "../infrastructure/db/transaction";
-import { getItem } from "../repositories/itemRepository";
-import {
-  createOrder,
-  findOrderByIdempotencyKey,
-  recordIdempotencyKey,
-} from "../repositories/orderRepository";
-import { decrementInventory } from "../repositories/warehouseRepository";
+import * as itemRepository from "../repositories/itemRepository";
+import * as orderRepository from "../repositories/orderRepository";
+import * as warehouseRepository from "../repositories/warehouseRepository";
 import { getOrderQuote, readWarehouseCandidates } from "./orderQuoteService";
 
 export interface OrderSubmissionInput {
@@ -47,7 +43,7 @@ async function checkIdempotencyKey(
   input: OrderSubmissionInput,
   executor?: QueryExecutor
 ): Promise<Order | undefined> {
-  const existing = await findOrderByIdempotencyKey(idempotencyKey, executor);
+  const existing = await orderRepository.findOrderByIdempotencyKey(idempotencyKey, executor);
   if (!existing) return undefined;
 
   if (!matchesClaimedOrder(existing, input)) {
@@ -107,7 +103,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
 
       const quote = await getOrderQuote(input, {
         readWarehouseCandidates: (itemId) => readWarehouseCandidates(itemId, client),
-        getItem: (itemId) => getItem(itemId, client),
+        getItem: (itemId) => itemRepository.getItem(itemId, client),
       });
 
       if (!quote.valid) {
@@ -115,13 +111,13 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
       }
 
       for (const line of quote.allocations) {
-        await decrementInventory(line.warehouseId, input.itemId, line.quantity, client);
+        await warehouseRepository.decrementInventory(line.warehouseId, input.itemId, line.quantity, client);
       }
 
-      const order = await createOrder(quote, client);
+      const order = await orderRepository.createOrder(quote, client);
 
       if (idempotencyKey) {
-        await recordIdempotencyKey(idempotencyKey, order.orderNumber, client);
+        await orderRepository.recordIdempotencyKey(idempotencyKey, order.orderNumber, client);
       }
 
       return order;

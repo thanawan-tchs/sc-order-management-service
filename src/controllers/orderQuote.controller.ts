@@ -6,6 +6,11 @@ import { quoteRequestsTotal } from "../observability/metrics";
 
 interface QuoteResponseBody {
   valid: boolean;
+  item: {
+    id: string;
+    name: string;
+    priceCents: number;
+  };
   quantity: number;
   pricing: {
     subtotalCents: number;
@@ -33,6 +38,11 @@ interface QuoteResponseBody {
 function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
   return {
     valid: quote.valid,
+    item: {
+      id: quote.item.id,
+      name: quote.item.name,
+      priceCents: quote.item.priceCents,
+    },
     quantity: quote.quantity,
     pricing: {
       subtotalCents: quote.subtotalCents,

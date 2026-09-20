@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getOrder } from "./getOrderService";
 import { toMoney } from "../domain/money";
-import { OrderQuote } from "../domain/types";
+import { Item, OrderQuote } from "../domain/types";
 import { closePool } from "../infrastructure/db/pool";
 import { createOrder } from "../repositories/orderRepository";
 import { resetTestDb } from "../../tests/helpers/db";
@@ -9,9 +9,14 @@ import { resetTestDb } from "../../tests/helpers/db";
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 
+// items is truncated + reseeded fresh by resetTestDb, but its id is a UUID (ticket "use item id
+// as uuid format"), generated fresh each time — captured here rather than hardcoded.
+let defaultItem: Item;
+
 function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
   return {
     quantity: 10,
+    item: defaultItem,
     shippingAddress: { latitude: 40.7128, longitude: -74.006 },
     subtotalCents: toMoney(150000),
     discountRate: 0,
@@ -30,7 +35,8 @@ function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
 }
 
 beforeEach(async () => {
-  await resetTestDb();
+  const itemId = await resetTestDb();
+  defaultItem = { id: itemId, name: "Standard Unit", priceCents: toMoney(15000), weightKg: 0.365 };
 });
 
 afterAll(async () => {

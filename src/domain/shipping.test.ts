@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM } from "../config";
+import { SHIPPING_RATE_CENTS_PER_KG_KM } from "../config";
 import { calculateShippingCost, sumShippingCosts } from "./shipping";
+
+// Matches the one seed item's weight (migrations/0006_item_aware_inventory_and_orders.ts).
+const UNIT_WEIGHT_KG = 0.365;
 
 describe("calculateShippingCost", () => {
   it("is zero at zero distance, regardless of quantity", () => {
-    expect(calculateShippingCost(0, 1, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM)).toBe(0);
-    expect(calculateShippingCost(0, 10000, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM)).toBe(0);
+    expect(calculateShippingCost(0, 1, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM)).toBe(0);
+    expect(calculateShippingCost(0, 10000, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM)).toBe(0);
   });
 
   it("computes the cost for a single device", () => {
@@ -20,7 +23,7 @@ describe("calculateShippingCost", () => {
 
   it("handles the real business constants for a realistic order", () => {
     // 1000km, 50 devices: weight = 50 * 0.365 = 18.25kg; 1000 * 18.25 * 1 = 18250 cents ($182.50).
-    const cost = calculateShippingCost(1000, 50, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM);
+    const cost = calculateShippingCost(1000, 50, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM);
     expect(cost).toBe(18250);
   });
 
@@ -52,15 +55,15 @@ describe("calculateShippingCost", () => {
 
 describe("sumShippingCosts", () => {
   it("sums a single-warehouse allocation to itself", () => {
-    const cost = calculateShippingCost(1000, 50, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM);
+    const cost = calculateShippingCost(1000, 50, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM);
     expect(sumShippingCosts([cost])).toBe(cost);
   });
 
   it("sums multiple warehouse allocations into one order total", () => {
     // Same order split across 3 warehouses at different distances.
-    const fromWarehouseA = calculateShippingCost(500, 20, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM); // 3650
-    const fromWarehouseB = calculateShippingCost(1200, 15, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM); // 6570
-    const fromWarehouseC = calculateShippingCost(80, 15, ITEM_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM); // 438
+    const fromWarehouseA = calculateShippingCost(500, 20, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM); // 3650
+    const fromWarehouseB = calculateShippingCost(1200, 15, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM); // 6570
+    const fromWarehouseC = calculateShippingCost(80, 15, UNIT_WEIGHT_KG, SHIPPING_RATE_CENTS_PER_KG_KM); // 438
 
     const total = sumShippingCosts([fromWarehouseA, fromWarehouseB, fromWarehouseC]);
 

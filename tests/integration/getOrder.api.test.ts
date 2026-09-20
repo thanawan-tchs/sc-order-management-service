@@ -10,6 +10,9 @@ const app = createApp();
 const NYC = { latitude: 40.7128, longitude: -74.006 };
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
+// Matches the one seed item; its id is a UUID (ticket "use item id as uuid format"),
+// generated fresh by resetTestDb on every reset — captured in beforeEach rather than hardcoded.
+let itemId: string;
 
 async function repositionWarehouse(
   id: number,
@@ -24,18 +27,25 @@ async function repositionWarehouse(
     longitude,
     id,
   ]);
-  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2", [stock, id]);
+  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2 AND item_id = $3", [
+    stock,
+    id,
+    itemId,
+  ]);
 }
 
 async function zeroOutStock(ids: number[]): Promise<void> {
   const pool = getPool();
   for (const id of ids) {
-    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1", [id]);
+    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1 AND item_id = $2", [
+      id,
+      itemId,
+    ]);
   }
 }
 
 beforeEach(async () => {
-  await resetTestDb();
+  itemId = await resetTestDb();
 });
 
 afterAll(async () => {
@@ -47,10 +57,12 @@ describe("GET /v1/orders/:orderNumber", () => {
     await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
     const submitResponse = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 20, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     expect(submitResponse.status).toBe(201);
 
-    const response = await request(app.callback()).get(`/v1/orders/${submitResponse.body.orderNumber}`);
+    const response = await request(app.callback()).get(
+      `/v1/orders/${submitResponse.body.orderNumber}`
+    );
 
     expect(response.status).toBe(200);
     expect(response.body.orderNumber).toBe(submitResponse.body.orderNumber);
@@ -85,10 +97,12 @@ describe("GET /v1/orders/:orderNumber", () => {
 
     const submitResponse = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 20, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     expect(submitResponse.status).toBe(201);
 
-    const response = await request(app.callback()).get(`/v1/orders/${submitResponse.body.orderNumber}`);
+    const response = await request(app.callback()).get(
+      `/v1/orders/${submitResponse.body.orderNumber}`
+    );
 
     expect(response.status).toBe(200);
     expect(response.body.shipping.allocations).toHaveLength(2);
@@ -104,7 +118,7 @@ describe("GET /v1/orders/:orderNumber", () => {
     await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
     const submitResponse = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 20, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     expect(submitResponse.status).toBe(201);
 
     // Simulate "pricing rules changed since this order was placed" by directly corrupting the
@@ -116,7 +130,9 @@ describe("GET /v1/orders/:orderNumber", () => {
       [0.42, 63000, 87000, submitResponse.body.orderNumber]
     );
 
-    const response = await request(app.callback()).get(`/v1/orders/${submitResponse.body.orderNumber}`);
+    const response = await request(app.callback()).get(
+      `/v1/orders/${submitResponse.body.orderNumber}`
+    );
 
     expect(response.status).toBe(200);
     expect(response.body.pricing.discountRate).toBe(0.42);

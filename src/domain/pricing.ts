@@ -1,4 +1,3 @@
-import { ITEM_UNIT_PRICE_CENTS } from "../config";
 import { Money, toMoney } from "./money";
 
 export interface DiscountTier {
@@ -20,10 +19,14 @@ export const DISCOUNT_TIERS: DiscountTier[] = [
 /**
  * Pure pricing functions — the single pricing service both the quote and submit flows call
  * against (ticket 04 acceptance criteria), so discount rules live in exactly one place.
+ *
+ * `calculateSubtotal` takes the unit price as a parameter rather than reading a constant —
+ * same shape as `calculateShippingCost`'s `unitWeightKg` param — so it works for whichever item
+ * the caller looked up, not just a single hardcoded SKU.
  */
 
-export function calculateSubtotal(quantity: number): Money {
-  return toMoney(quantity * ITEM_UNIT_PRICE_CENTS);
+export function calculateSubtotal(quantity: number, unitPriceCents: Money): Money {
+  return toMoney(quantity * unitPriceCents);
 }
 
 export function getDiscountRate(quantity: number): number {

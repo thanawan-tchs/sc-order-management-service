@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { IdempotencyKeyConflictError } from "../domain/errors";
 import { toMoney } from "../domain/money";
-import { OrderQuote } from "../domain/types";
+import { Item, OrderQuote } from "../domain/types";
 import { closePool } from "../infrastructure/db/pool";
 import {
   createOrder,
@@ -15,9 +15,14 @@ import { resetTestDb } from "../../tests/helpers/db";
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 
+// items is truncated + reseeded fresh by resetTestDb, but its id is a UUID (ticket "use item id
+// as uuid format"), generated fresh each time — captured here rather than hardcoded.
+let defaultItem: Item;
+
 function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
   return {
     quantity: 10,
+    item: defaultItem,
     shippingAddress: { latitude: 40.7128, longitude: -74.006 },
     subtotalCents: toMoney(150000),
     discountRate: 0,
@@ -36,7 +41,8 @@ function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
 }
 
 beforeEach(async () => {
-  await resetTestDb();
+  const itemId = await resetTestDb();
+  defaultItem = { id: itemId, name: "Standard Unit", priceCents: toMoney(15000), weightKg: 0.365 };
 });
 
 afterAll(async () => {
@@ -51,6 +57,7 @@ describe("createOrder", () => {
 
     expect(order.orderNumber).toMatch(/^ORD-\d{7}$/);
     expect(order.quantity).toBe(quote.quantity);
+    expect(order.item).toEqual(defaultItem);
     expect(order.subtotalCents).toBe(quote.subtotalCents);
     expect(order.discountRate).toBe(quote.discountRate);
     expect(order.discountCents).toBe(quote.discountCents);
@@ -120,6 +127,24 @@ describe("createOrder", () => {
     expect(fetched?.amountAfterDiscountCents).toBe(876543);
     expect(fetched?.shippingCostCents).toBe(4321);
     expect(fetched?.totalCents).toBe(880864);
+  });
+
+  it("preserves the item snapshot, independent of the catalog's current values", async () => {
+    // A name/price/weight that don't match the live items row — proving createOrder stores
+    // exactly the item snapshot it's given, same Snapshot Principle as pricing above.
+    const quote = buildQuote({
+      item: { id: defaultItem.id, name: "Renamed Product", priceCents: toMoney(99999), weightKg: 1.23 },
+    });
+
+    const order = await createOrder(quote);
+    const fetched = await getOrderByNumber(order.orderNumber);
+
+    expect(fetched?.item).toEqual({
+      id: defaultItem.id,
+      name: "Renamed Product",
+      priceCents: 99999,
+      weightKg: 1.23,
+    });
   });
 });
 

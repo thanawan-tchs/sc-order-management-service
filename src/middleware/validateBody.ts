@@ -4,15 +4,18 @@ import { ValidationError } from "../domain/errors";
 
 /**
  * Maps a zod issue to one of ticket 15's field-specific error codes, with a generic fallback for
- * anything that isn't quantity/latitude/longitude (e.g. a missing shippingAddress object
+ * anything that isn't itemId/quantity/latitude/longitude (e.g. a missing shippingAddress object
  * entirely). Only the *first* issue becomes the response — the error contract (ticket 15) is one
  * `{ code, message }` pair, not a list, so multiple simultaneous problems report the first one a
- * client would need to fix (schema declaration order: quantity, then latitude, then longitude).
+ * client would need to fix (schema declaration order: itemId, quantity, latitude, longitude).
  */
 function toValidationError(issues: ZodIssue[]): ValidationError {
   const [issue] = issues;
   const path = issue.path.join(".");
 
+  if (path === "itemId") {
+    return new ValidationError("INVALID_ITEM_ID", "itemId is required and must be a valid UUID.");
+  }
   if (path === "quantity") {
     return new ValidationError("INVALID_QUANTITY", "Quantity is required and must be a positive integer.");
   }
@@ -27,6 +30,18 @@ function toValidationError(issues: ZodIssue[]): ValidationError {
       "INVALID_LONGITUDE",
       "Longitude is required and must be between -180 and 180."
     );
+  }
+  if (path === "name") {
+    return new ValidationError("INVALID_ITEM_NAME", "name is required and must be a non-empty string.");
+  }
+  if (path === "priceCents") {
+    return new ValidationError(
+      "INVALID_PRICE_CENTS",
+      "priceCents is required and must be a positive integer."
+    );
+  }
+  if (path === "weightKg") {
+    return new ValidationError("INVALID_WEIGHT_KG", "weightKg is required and must be a positive number.");
   }
   return new ValidationError("VALIDATION_ERROR", issue.message);
 }

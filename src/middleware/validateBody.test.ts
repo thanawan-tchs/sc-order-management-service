@@ -88,11 +88,21 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
   }
 
   const validAddress = { latitude: 40.7128, longitude: -74.006 };
+  const VALID_ITEM_ID = "11111111-1111-1111-1111-111111111111";
+
+  it("maps an invalid itemId to INVALID_ITEM_ID", async () => {
+    const response = await request(buildOrderRequestApp().callback())
+      .post("/test")
+      .send({ itemId: "not-a-uuid", quantity: 10, shippingAddress: validAddress });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("INVALID_ITEM_ID");
+  });
 
   it("maps an invalid quantity to INVALID_QUANTITY", async () => {
     const response = await request(buildOrderRequestApp().callback())
       .post("/test")
-      .send({ quantity: -1, shippingAddress: validAddress });
+      .send({ itemId: VALID_ITEM_ID, quantity: -1, shippingAddress: validAddress });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("INVALID_QUANTITY");
@@ -101,7 +111,7 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
   it("maps an invalid latitude to INVALID_LATITUDE", async () => {
     const response = await request(buildOrderRequestApp().callback())
       .post("/test")
-      .send({ quantity: 10, shippingAddress: { latitude: 999, longitude: -74.006 } });
+      .send({ itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: { latitude: 999, longitude: -74.006 } });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("INVALID_LATITUDE");
@@ -110,7 +120,7 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
   it("maps an invalid longitude to INVALID_LONGITUDE", async () => {
     const response = await request(buildOrderRequestApp().callback())
       .post("/test")
-      .send({ quantity: 10, shippingAddress: { latitude: 40.7128, longitude: 999 } });
+      .send({ itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: { latitude: 40.7128, longitude: 999 } });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("INVALID_LONGITUDE");
@@ -119,7 +129,7 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
   it("maps anything else (e.g. a missing shippingAddress) to the generic VALIDATION_ERROR fallback", async () => {
     const response = await request(buildOrderRequestApp().callback())
       .post("/test")
-      .send({ quantity: 10 });
+      .send({ itemId: VALID_ITEM_ID, quantity: 10 });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
@@ -128,9 +138,11 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
   it("passes a fully valid request through untouched", async () => {
     const response = await request(buildOrderRequestApp().callback())
       .post("/test")
-      .send({ quantity: 10, shippingAddress: validAddress });
+      .send({ itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: validAddress });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ received: { quantity: 10, shippingAddress: validAddress } });
+    expect(response.body).toEqual({
+      received: { itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: validAddress },
+    });
   });
 });

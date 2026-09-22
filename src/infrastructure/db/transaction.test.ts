@@ -2,7 +2,7 @@ import { expect } from "chai";
 import sinon from "sinon";
 import * as poolModule from "./pool";
 import { withTransaction } from "./transaction";
-import * as warehouseRepository from "../../repositories/warehouseRepository";
+import * as warehouseRepository from "@repositories/warehouseRepository";
 
 const LOS_ANGELES_ID = 1;
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";

@@ -16,7 +16,7 @@ describe("getPool", () => {
   });
 
   it("configures the pool from config (connection-pool size, timeouts, statement_timeout)", async () => {
-    const { config } = await import("../../config");
+    const { config } = await import("@config");
     const { getPool } = requireFreshPoolModule();
 
     const pool = getPool();

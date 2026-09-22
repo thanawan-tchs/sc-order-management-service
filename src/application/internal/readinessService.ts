@@ -1,4 +1,4 @@
-import { getPool } from "../../infrastructure/db/pool";
+import { getPool } from "@infrastructure/db/pool";
 
 export interface ReadinessResult {
   ready: boolean;

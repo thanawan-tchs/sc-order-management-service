@@ -1,5 +1,5 @@
 import { Pool, PoolClient } from "pg";
-import { config } from "../../config";
+import { config } from "@config";
 
 export type QueryExecutor = Pool | PoolClient;
 

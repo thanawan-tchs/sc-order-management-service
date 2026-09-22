@@ -1,8 +1,8 @@
 import { Context } from "koa";
-import * as getOrderService from "../application/orders/getOrderService";
-import { OrderNotFoundError } from "../domain/errors";
-import { Order } from "../domain/model/order";
-import { toDisplayAmount } from "../utils/money";
+import * as getOrderService from "@application/orders/getOrderService";
+import { OrderNotFoundError } from "@domain/errors";
+import { Order } from "@domain/model/order";
+import { toDisplayAmount } from "@utils/money";
 
 interface OrderDetailResponseBody {
   orderNumber: string;

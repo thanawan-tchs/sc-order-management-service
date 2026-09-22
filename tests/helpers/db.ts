@@ -1,6 +1,6 @@
-import { migrate } from "../../src/infrastructure/db/migrate";
-import { getPool } from "../../src/infrastructure/db/pool";
-import { seed } from "../../src/infrastructure/db/seed";
+import { migrate } from "@infrastructure/db/migrate";
+import { getPool } from "@infrastructure/db/pool";
+import { seed } from "@infrastructure/db/seed";
 
 export async function resetTestDb(): Promise<string> {
   const pool = getPool();

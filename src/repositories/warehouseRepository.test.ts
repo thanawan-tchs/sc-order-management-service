@@ -1,8 +1,8 @@
 import { expect } from "chai";
 import sinon from "sinon";
-import { SEED_WAREHOUSES } from "../config";
-import { InsufficientStockError } from "../domain/errors";
-import { QueryExecutor } from "../infrastructure/db/pool";
+import { SEED_WAREHOUSES } from "@config";
+import { InsufficientStockError } from "@domain/errors";
+import { QueryExecutor } from "@infrastructure/db/pool";
 import * as warehouseRepository from "./warehouseRepository";
 
 function fakeExecutor(query: sinon.SinonStub): QueryExecutor {

@@ -4,7 +4,7 @@ import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
 import request from "supertest";
 import sinon from "sinon";
-import { logger } from "../observability/logger";
+import { logger } from "@observability/logger";
 import { errorHandler } from "./errorHandler";
 import { requestContext } from "./requestContext";
 

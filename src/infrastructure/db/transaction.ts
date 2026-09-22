@@ -1,5 +1,5 @@
 import { PoolClient } from "pg";
-import { logger } from "../../observability/logger";
+import { logger } from "@observability/logger";
 import { getPool } from "./pool";
 
 export async function withTransaction<T>(

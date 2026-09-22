@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import { getPool } from "./pool";
-import { SEED_ITEMS, SEED_WAREHOUSES } from "../../config";
+import { SEED_ITEMS, SEED_WAREHOUSES } from "@config";
 
 export async function seed(): Promise<string> {
   const pool = getPool();

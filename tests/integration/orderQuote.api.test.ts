@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { createApp } from "../../src/app";
-import { closePool } from "../../src/infrastructure/db/pool";
-import * as warehouseRepository from "../../src/repositories/warehouseRepository";
+import { createApp } from "@app";
+import { closePool } from "@infrastructure/db/pool";
+import * as warehouseRepository from "@repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 
 const app = createApp();

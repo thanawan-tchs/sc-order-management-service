@@ -1,4 +1,4 @@
-import { Coordinates, EARTH_RADIUS_KM } from "../../src/domain/distance";
+import { Coordinates, EARTH_RADIUS_KM } from "@domain/distance";
 
 export function pointAtDistanceFrom(origin: Coordinates, distanceKm: number): Coordinates {
   const deltaLatDeg = (distanceKm / EARTH_RADIUS_KM) * (180 / Math.PI);

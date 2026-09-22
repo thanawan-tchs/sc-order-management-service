@@ -1,5 +1,5 @@
 import { Context } from "koa";
-import { checkReadiness } from "../application/internal/readinessService";
+import { checkReadiness } from "@application/internal/readinessService";
 
 export function getHealth(ctx: Context): void {
   ctx.status = 200;

@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { createApp } from "../../src/app";
-import { closePool, getPool } from "../../src/infrastructure/db/pool";
-import * as orderRepository from "../../src/repositories/orderRepository";
-import * as warehouseRepository from "../../src/repositories/warehouseRepository";
+import { createApp } from "@app";
+import { closePool, getPool } from "@infrastructure/db/pool";
+import * as orderRepository from "@repositories/orderRepository";
+import * as warehouseRepository from "@repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
 

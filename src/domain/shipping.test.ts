@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { SHIPPING_RATE_PER_KG_KM } from "../config";
+import { SHIPPING_RATE_PER_KG_KM } from "@config";
 import { calculateShippingCost, sumShippingCosts } from "./shipping";
 
 const UNIT_WEIGHT_KG = 0.365;

@@ -1,5 +1,5 @@
 import { Server } from "http";
-import { logger as defaultLogger } from "../observability/logger";
+import { logger as defaultLogger } from "@observability/logger";
 
 export interface GracefulShutdownDependencies {
   server: Pick<Server, "close">;

@@ -1,20 +1,20 @@
-import { SHIPPING_RATE_PER_KG_KM } from "../../config";
-import { WarehouseCandidate, allocateOrder } from "../../domain/allocation";
-import { ItemNotFoundError } from "../../domain/errors";
-import { Money, toMoney } from "../../domain/money";
+import { SHIPPING_RATE_PER_KG_KM } from "@config";
+import { WarehouseCandidate, allocateOrder } from "@domain/allocation";
+import { ItemNotFoundError } from "@domain/errors";
+import { Money, toMoney } from "@domain/money";
 import {
   calculateAmountAfterDiscount,
   calculateDiscount,
   calculateSubtotal,
   getDiscountRate,
-} from "../../domain/pricing";
-import { Item } from "../../domain/model/item";
-import { OrderQuote } from "../../domain/model/order";
-import { ShippingAddress } from "../../domain/model/shipping";
-import { InvalidOrderReason, isShippingCostWithinLimit } from "../../domain/validity";
-import { QueryExecutor, getPool } from "../../infrastructure/db/pool";
-import * as itemRepository from "../../repositories/itemRepository";
-import * as warehouseRepository from "../../repositories/warehouseRepository";
+} from "@domain/pricing";
+import { Item } from "@domain/model/item";
+import { OrderQuote } from "@domain/model/order";
+import { ShippingAddress } from "@domain/model/shipping";
+import { InvalidOrderReason, isShippingCostWithinLimit } from "@domain/validity";
+import { QueryExecutor, getPool } from "@infrastructure/db/pool";
+import * as itemRepository from "@repositories/itemRepository";
+import * as warehouseRepository from "@repositories/warehouseRepository";
 
 export interface OrderQuoteInput {
   itemId: string;

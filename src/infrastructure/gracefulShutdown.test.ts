@@ -1,7 +1,7 @@
 import { Server } from "http";
 import { expect } from "chai";
 import sinon from "sinon";
-import { logger } from "../observability/logger";
+import { logger } from "@observability/logger";
 import { createShutdownHandler } from "./gracefulShutdown";
 
 function fakeLogger() {

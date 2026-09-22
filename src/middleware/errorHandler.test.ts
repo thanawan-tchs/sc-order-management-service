@@ -3,8 +3,8 @@ import Koa, { Context } from "koa";
 import Router from "@koa/router";
 import request from "supertest";
 import sinon from "sinon";
-import { OrderNotFoundError, ValidationError } from "../domain/errors";
-import { logger } from "../observability/logger";
+import { OrderNotFoundError, ValidationError } from "@domain/errors";
+import { logger } from "@observability/logger";
 import { errorHandler } from "./errorHandler";
 
 function buildApp(handler: (ctx: Context) => void | Promise<void>): Koa {

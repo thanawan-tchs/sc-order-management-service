@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
-import { toMoney } from "../domain/money";
-import { QueryExecutor } from "../infrastructure/db/pool";
+import { toMoney } from "@domain/money";
+import { QueryExecutor } from "@infrastructure/db/pool";
 import * as itemRepository from "./itemRepository";
 
 function fakeExecutor(query: sinon.SinonStub): QueryExecutor {

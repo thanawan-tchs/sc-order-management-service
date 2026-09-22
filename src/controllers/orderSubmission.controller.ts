@@ -1,8 +1,8 @@
 import { Context } from "koa";
-import * as orderSubmissionService from "../application/orders/orderSubmissionService";
-import { Order } from "../domain/model/order";
-import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
-import { toDisplayAmount } from "../utils/money";
+import * as orderSubmissionService from "@application/orders/orderSubmissionService";
+import { Order } from "@domain/model/order";
+import { OrderRequestInput } from "@domain/validation/orderRequest.schema";
+import { toDisplayAmount } from "@utils/money";
 
 interface OrderResponseBody {
   orderNumber: string;

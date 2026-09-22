@@ -1,9 +1,9 @@
 import Router from "@koa/router";
-import { getOrder } from "../controllers/getOrder.controller";
-import { quoteOrder } from "../controllers/orderQuote.controller";
-import { submitOrder } from "../controllers/orderSubmission.controller";
-import { orderRequestSchema } from "../domain/validation/orderRequest.schema";
-import { validateBody } from "../middleware/validateBody";
+import { getOrder } from "@controllers/getOrder.controller";
+import { quoteOrder } from "@controllers/orderQuote.controller";
+import { submitOrder } from "@controllers/orderSubmission.controller";
+import { orderRequestSchema } from "@domain/validation/orderRequest.schema";
+import { validateBody } from "@middleware/validateBody";
 
 const router = new Router({ prefix: "/orders" });
 

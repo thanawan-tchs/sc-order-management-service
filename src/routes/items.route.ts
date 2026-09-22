@@ -1,7 +1,7 @@
 import Router from "@koa/router";
-import { createItem, getItem, listItems } from "../controllers/item.controller";
-import { itemRequestSchema } from "../domain/validation/itemRequest.schema";
-import { validateBody } from "../middleware/validateBody";
+import { createItem, getItem, listItems } from "@controllers/item.controller";
+import { itemRequestSchema } from "@domain/validation/itemRequest.schema";
+import { validateBody } from "@middleware/validateBody";
 
 const router = new Router({ prefix: "/items" });
 

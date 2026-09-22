@@ -17,7 +17,22 @@
     "noFallthroughCasesInSwitch": true,
     "outDir": "dist",
     "rootDir": ".",
-    "types": ["node", "mocha"]
+    "types": ["node", "mocha"],
+    "paths": {
+      "@app": ["./src/app.ts"],
+      "@config": ["./src/config/index.ts"],
+      "@config/*": ["./src/config/*"],
+      "@domain/*": ["./src/domain/*"],
+      "@application/*": ["./src/application/*"],
+      "@controllers/*": ["./src/controllers/*"],
+      "@repositories/*": ["./src/repositories/*"],
+      "@infrastructure/*": ["./src/infrastructure/*"],
+      "@middleware/*": ["./src/middleware/*"],
+      "@observability/*": ["./src/observability/*"],
+      "@routes/*": ["./src/routes/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@tests/*": ["./tests/*"]
+    }
   },
   "include": ["src", "tests"],
   "exclude": ["node_modules", "dist"]

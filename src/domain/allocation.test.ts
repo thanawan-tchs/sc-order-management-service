@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { allocateOrder, WarehouseCandidate } from "./allocation";
 import { calculateShippingCost } from "./shipping";
-import { pointAtDistanceFromOrigin } from "../../tests/helpers/geo";
+import { pointAtDistanceFromOrigin } from "@tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 

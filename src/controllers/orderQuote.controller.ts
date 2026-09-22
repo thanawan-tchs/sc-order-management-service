@@ -1,8 +1,8 @@
 import { Context } from "koa";
-import { getOrderQuote } from "../application/orders/orderQuoteService";
-import { OrderQuote } from "../domain/model/order";
-import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
-import { toDisplayAmount } from "../utils/money";
+import { getOrderQuote } from "@application/orders/orderQuoteService";
+import { OrderQuote } from "@domain/model/order";
+import { OrderRequestInput } from "@domain/validation/orderRequest.schema";
+import { toDisplayAmount } from "@utils/money";
 
 interface QuoteResponseBody {
   valid: boolean;

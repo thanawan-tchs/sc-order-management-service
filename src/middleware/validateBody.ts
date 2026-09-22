@@ -1,7 +1,7 @@
 import { Context, Next } from "koa";
 import { ZodIssue, ZodSchema } from "zod";
-import { ValidationError } from "../domain/errors";
-import { CURRENCIES } from "../domain/money";
+import { ValidationError } from "@domain/errors";
+import { CURRENCIES } from "@domain/money";
 
 // TODO: to be improve
 function toValidationError(issues: ZodIssue[]): ValidationError {

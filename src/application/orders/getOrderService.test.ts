@@ -1,10 +1,10 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { getOrder } from "./getOrderService";
-import { toMoney } from "../../domain/money";
-import { Item } from "../../domain/model/item";
-import { Order } from "../../domain/model/order";
-import * as orderRepository from "../../repositories/orderRepository";
+import { toMoney } from "@domain/money";
+import { Item } from "@domain/model/item";
+import { Order } from "@domain/model/order";
+import * as orderRepository from "@repositories/orderRepository";
 
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;

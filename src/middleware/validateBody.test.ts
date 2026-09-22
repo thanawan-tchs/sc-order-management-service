@@ -4,7 +4,7 @@ import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
 import request from "supertest";
 import { z } from "zod";
-import { orderRequestSchema } from "../domain/validation/orderRequest.schema";
+import { orderRequestSchema } from "@domain/validation/orderRequest.schema";
 import { errorHandler } from "./errorHandler";
 import { validateBody } from "./validateBody";
 

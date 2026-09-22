@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { createApp } from "../../src/app";
-import { closePool } from "../../src/infrastructure/db/pool";
+import { createApp } from "@app";
+import { closePool } from "@infrastructure/db/pool";
 import { resetTestDb } from "../helpers/db";
 
 const app = createApp();

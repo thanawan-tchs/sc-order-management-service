@@ -1,8 +1,8 @@
-import { IdempotencyKeyConflictError } from "../domain/errors";
-import { Currency, toMoney } from "../domain/money";
-import { Order, OrderQuote, OrderStatus } from "../domain/model/order";
-import { ShippingAllocation } from "../domain/model/shipping";
-import { QueryExecutor, getPool } from "../infrastructure/db/pool";
+import { IdempotencyKeyConflictError } from "@domain/errors";
+import { Currency, toMoney } from "@domain/money";
+import { Order, OrderQuote, OrderStatus } from "@domain/model/order";
+import { ShippingAllocation } from "@domain/model/shipping";
+import { QueryExecutor, getPool } from "@infrastructure/db/pool";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 

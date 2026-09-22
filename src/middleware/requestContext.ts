@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { Context, Next } from "koa";
-import { logger } from "../observability/logger";
+import { logger } from "@observability/logger";
 
 const REQUEST_ID_HEADER = "X-Request-Id";
 

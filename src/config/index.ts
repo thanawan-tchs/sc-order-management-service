@@ -1,4 +1,4 @@
-import { Currency } from "../domain/money";
+import { Currency } from "@domain/money";
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",

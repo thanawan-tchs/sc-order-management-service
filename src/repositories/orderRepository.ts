@@ -4,9 +4,6 @@ import { toMoney } from "../domain/money";
 import { Order, OrderQuote, OrderStatus, ShippingAllocation } from "../domain/types";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
 
-/** Postgres error code for a unique/primary-key constraint violation. `pg` attaches this to the
- *  thrown error's `.code` — used to tell "lost the idempotency-key race" apart from any other
- *  failure while inserting into `idempotency_keys`. */
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 
 function isUniqueViolation(error: unknown): boolean {
@@ -49,14 +46,6 @@ function mapAllocationRow(row: AllocationRow): ShippingAllocation {
   };
 }
 
-/**
- * Builds the domain `Order` for a row read back from the database. `valid`/`invalidReasons`
- * aren't persisted columns (ticket 10's schema doesn't list them) — only orders that were valid
- * at submission time are ever written (ticket 11 enforces that), so a row existing at all implies
- * `valid: true` here. `item` is rebuilt from the row's own `item_*` snapshot columns, not looked
- * up from `items` — the whole point of snapshotting is that a later catalog price change must
- * never alter what a historical order reports.
- */
 function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
   return {
     quantity: row.quantity,
@@ -84,29 +73,10 @@ function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
 }
 
 async function generateOrderNumber(executor: QueryExecutor): Promise<string> {
-  // nextval() is atomic under Postgres MVCC regardless of concurrent callers (see
-  // infrastructure/db/migrations/0002_orders.ts) — this is the whole concurrency-safety
-  // mechanism, no application-level locking needed.
   const { rows } = await executor.query<{ seq: string }>("SELECT nextval('order_number_seq') AS seq");
-  // pg returns bigint as a string (JS numbers can't safely hold the full int8 range) — fine here,
-  // we only ever format it, never do arithmetic on it.
   return `ORD-${rows[0].seq.padStart(7, "0")}`;
 }
 
-/**
- * Persists an already-computed order snapshot (ticket 08's `OrderQuote`, unchanged) plus its
- * per-warehouse allocations, and assigns a unique, human-readable order number.
- *
- * This function does not validate the quote (`quote.valid` is the caller's concern — ticket 11's
- * atomic submission only calls this for orders it has already determined are valid) and does not
- * touch inventory — it is pure persistence, matching ticket 10's "Snapshot Principle": whatever
- * pricing/discount/shipping/item values are on `quote` are exactly what gets stored, so a later
- * change to discount tiers, the shipping rate, or an item's catalog price/name can never
- * retroactively alter a historical order.
- *
- * Accepts an optional `executor` (see infrastructure/db/pool.ts's `QueryExecutor`) so ticket 11
- * can run this inside the same transaction as its inventory decrements.
- */
 const INITIAL_ORDER_STATUS: OrderStatus = "CONFIRMED";
 
 export async function createOrder(quote: OrderQuote, executor: QueryExecutor = getPool()): Promise<Order> {
@@ -181,7 +151,6 @@ export async function getOrderByNumber(
   return mapOrderRow(orderRow, allocationRows.map(mapAllocationRow));
 }
 
-/** Looks up the order already associated with an Idempotency-Key, if any (ticket 13). */
 export async function findOrderByIdempotencyKey(
   idempotencyKey: string,
   executor: QueryExecutor = getPool()
@@ -196,17 +165,6 @@ export async function findOrderByIdempotencyKey(
   return getOrderByNumber(row.order_number, executor);
 }
 
-/**
- * Claims an Idempotency-Key for `orderNumber` — meant to be called with the same `executor` (and
- * thus the same transaction) as the `createOrder` call it's claiming the key for, so the claim
- * and the order live or die together (ticket 13's "failed transaction does not consume
- * idempotency state").
- *
- * Throws `IdempotencyKeyConflictError` if the key was already claimed (by a concurrent
- * submission racing on the same key — the `idempotency_keys` PRIMARY KEY is what actually decides
- * the race, same pattern as `order_number_seq`/`decrementInventory`), rather than the raw
- * Postgres unique-violation error, so callers can handle it without depending on `pg` internals.
- */
 export async function recordIdempotencyKey(
   idempotencyKey: string,
   orderNumber: string,

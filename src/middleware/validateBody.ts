@@ -2,13 +2,6 @@ import { Context, Next } from "koa";
 import { ZodIssue, ZodSchema } from "zod";
 import { ValidationError } from "../domain/errors";
 
-/**
- * Maps a zod issue to one of ticket 15's field-specific error codes, with a generic fallback for
- * anything that isn't itemId/quantity/latitude/longitude (e.g. a missing shippingAddress object
- * entirely). Only the *first* issue becomes the response — the error contract (ticket 15) is one
- * `{ code, message }` pair, not a list, so multiple simultaneous problems report the first one a
- * client would need to fix (schema declaration order: itemId, quantity, latitude, longitude).
- */
 function toValidationError(issues: ZodIssue[]): ValidationError {
   const [issue] = issues;
   const path = issue.path.join(".");
@@ -46,15 +39,6 @@ function toValidationError(issues: ZodIssue[]): ValidationError {
   return new ValidationError("VALIDATION_ERROR", issue.message);
 }
 
-/**
- * Generic request-body validation middleware. Parses `ctx.request.body` against `schema`; on
- * success, attaches the typed, validated value to `ctx.state.validated` for the downstream
- * handler to read. On failure, throws a `ValidationError` — caught by the central error handler
- * (ticket 15), never sets `ctx.status`/`ctx.body` itself.
- *
- * Every write endpoint (quote, submit, ...) mounts this in front of its handler, so validation
- * rules live in one schema instead of being duplicated across controllers (ticket 02 DoD).
- */
 export function validateBody<T>(schema: ZodSchema<T>) {
   return async (ctx: Context, next: Next): Promise<void> => {
     const result = schema.safeParse(ctx.request.body);

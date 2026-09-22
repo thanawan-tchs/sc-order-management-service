@@ -30,8 +30,6 @@ interface OrderResponseBody {
   };
 }
 
-/** Maps the domain Order to the HTTP response contract — same pricing/allocation shape as the
- *  quote endpoint, so an integrated client sees an identical snapshot on both. */
 function toOrderResponse(order: Order): OrderResponseBody {
   return {
     orderNumber: order.orderNumber,
@@ -61,12 +59,8 @@ function toOrderResponse(order: Order): OrderResponseBody {
   };
 }
 
-/** POST /v1/orders. `submitOrder` throws typed `AppError`s on failure, which always propagate to
- *  the central error middleware — this handler never touches `ctx.status`/`ctx.body` on failure. */
 export async function submitOrder(ctx: Context): Promise<void> {
   const input = ctx.state.validated as OrderRequestInput;
-  // Header names are case-insensitive in HTTP; ctx.get() normalizes for us. An empty/whitespace
-  // header is treated the same as no header at all (ticket 13's Idempotency-Key is optional).
   const idempotencyKey = ctx.get("Idempotency-Key").trim() || undefined;
 
   const order: Order = await orderSubmissionService.submitOrder({ ...input, idempotencyKey });

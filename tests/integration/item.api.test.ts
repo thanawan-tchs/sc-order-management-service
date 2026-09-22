@@ -6,8 +6,6 @@ import { resetTestDb } from "../helpers/db";
 
 const app = createApp();
 
-// Matches the one seed item; its id is a UUID, generated fresh by resetTestDb on every reset —
-// captured in beforeEach rather than hardcoded.
 let itemId: string;
 
 beforeEach(async () => {

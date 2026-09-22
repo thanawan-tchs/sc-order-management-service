@@ -26,9 +26,6 @@ describe("GET /health", () => {
   });
 
   it("does not depend on the database (still responds even if it were down)", async () => {
-    // /health is a liveness check ("is the process alive"), not readiness — it must never touch
-    // the database. There's no DB call in getHealth at all, so this is really documentation via
-    // a passing test rather than something that could plausibly fail.
     const app = createApp();
     const response = await request(app.callback()).get("/health");
     expect(response.status).toBe(200);

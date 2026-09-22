@@ -9,8 +9,6 @@ import { resetTestDb } from "../../tests/helpers/db";
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 
-// items is truncated + reseeded fresh by resetTestDb, but its id is a UUID (ticket "use item id
-// as uuid format"), generated fresh each time — captured here rather than hardcoded.
 let defaultItem: Item;
 
 function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
@@ -79,10 +77,6 @@ describe("getOrder", () => {
   });
 
   it("returns the exact historical snapshot, even for values today's pricing rules would never produce", async () => {
-    // Deliberately a discount rate/amounts no current tier in pricing.ts could produce for this
-    // quantity — proves this read path never recalculates, only reads what was stored at
-    // submission time (ticket 10's Snapshot Principle; ticket 14's "do not recalculate historical
-    // pricing, distance, or discount").
     const created = await orderRepository.createOrder(
       buildQuote({
         quantity: 10,

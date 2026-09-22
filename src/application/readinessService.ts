@@ -15,12 +15,6 @@ const defaultDependencies: ReadinessDependencies = {
   },
 };
 
-/**
- * Ticket 17: is this service ready to serve traffic? Postgres is the only external dependency
- * this service has, so that's the only check today. `deps` is injectable (same pattern as
- * orderQuoteService's `readWarehouseCandidates`) so this is testable without taking a real
- * database down.
- */
 export async function checkReadiness(deps: ReadinessDependencies = defaultDependencies): Promise<ReadinessResult> {
   try {
     await deps.checkDatabase();

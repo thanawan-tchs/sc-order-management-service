@@ -15,9 +15,6 @@ async function main(): Promise<void> {
     logger.info({ port: config.port, nodeEnv: config.nodeEnv }, "order-management-service listening");
   });
 
-  // Production concerns (ticket 17): abort a request that hangs too long, independent of
-  // anything the app itself is doing. headersTimeout must exceed requestTimeout (Node's own
-  // requirement) — config's defaults already respect that.
   server.requestTimeout = config.requestTimeoutMs;
   server.headersTimeout = config.headersTimeoutMs;
 

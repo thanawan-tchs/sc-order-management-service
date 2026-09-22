@@ -32,7 +32,6 @@ describe("requestContext middleware", () => {
     const response = await request(app.callback()).get("/test/1");
 
     expect(response.headers["x-request-id"]).toBeTruthy();
-    // A real UUID, not an empty/placeholder value.
     expect(response.headers["x-request-id"]).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     );
@@ -91,9 +90,6 @@ describe("requestContext middleware", () => {
 
     await request(app.callback()).get("/test/1");
 
-    // Two error-level lines: errorHandler's "unhandled error", and requestContext's own
-    // "request completed" (status >= 500) — both go through the same child logger. Only the
-    // latter is what this test cares about.
     expect(errorFn).toHaveBeenCalledTimes(2);
     const completionCall = errorFn.mock.calls.find(([, message]) => message === "request completed");
     expect(completionCall).toBeDefined();
@@ -127,7 +123,6 @@ describe("requestContext middleware", () => {
     await request(app.callback()).get("/test/1");
 
     expect(infoFn).not.toHaveBeenCalled();
-    // errorHandler's own "unhandled error" line, plus requestContext's "request completed" line.
     expect(errorFn).toHaveBeenCalledTimes(2);
     expect(errorFn.mock.calls.some(([, message]) => message === "request completed")).toBe(true);
   });

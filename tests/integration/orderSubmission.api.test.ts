@@ -13,8 +13,6 @@ const NYC = { latitude: 40.7128, longitude: -74.006 };
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 const ALL_WAREHOUSE_IDS = [1, 2, 3, 4, 5, 6];
-// Matches the one seed item; its id is a UUID (ticket "use item id as uuid format"),
-// generated fresh by resetTestDb on every reset — captured in beforeEach rather than hardcoded.
 let itemId: string;
 
 async function repositionWarehouse(
@@ -64,7 +62,6 @@ afterAll(async () => {
 
 describe("POST /v1/orders", () => {
   it("returns 201 with a correct, internally-consistent order (ticket 12's own worked example)", async () => {
-    // Same request as the ticket's example: 100 units to a New York City address.
     const response = await request(app.callback())
       .post("/v1/orders")
       .send({ itemId: itemId, quantity: 100, shippingAddress: NYC });
@@ -74,15 +71,11 @@ describe("POST /v1/orders", () => {
     expect(response.body.status).toBe("CONFIRMED");
     expect(response.body.quantity).toBe(100);
 
-    // Pure pricing math (no geography involved) — matches the ticket's example exactly.
     expect(response.body.pricing.subtotalCents).toBe(1500000);
     expect(response.body.pricing.discountRate).toBe(0.15);
     expect(response.body.pricing.discountCents).toBe(225000);
     expect(response.body.pricing.amountAfterDiscountCents).toBe(1275000);
 
-    // As with ticket 09's quote example, the ticket's illustrative shippingCents (888) doesn't
-    // reproduce against real geography for these coordinates/seed data (this service computes
-    // 759) — assert self-consistency instead of the literal illustrative value.
     expect(response.body.pricing.totalCents).toBe(
       response.body.pricing.amountAfterDiscountCents + response.body.pricing.shippingCents
     );
@@ -90,7 +83,6 @@ describe("POST /v1/orders", () => {
       expect.objectContaining({ warehouseId: NEW_YORK_ID, quantity: 100 }),
     ]);
 
-    // Actually persisted, not just echoed back.
     const fetched = await orderRepository.getOrderByNumber(response.body.orderNumber);
     expect(fetched?.quantity).toBe(100);
     expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(578 - 100);
@@ -151,7 +143,6 @@ describe("POST /v1/orders", () => {
 
   it("returns 422 with code SHIPPING_COST_EXCEEDS_15_PERCENT, and leaves inventory untouched", async () => {
     await zeroOutStock(ALL_WAREHOUSE_IDS);
-    // qty 1 (no discount, 15% limit = 2250 cents); round(10000km * 0.365kg * 1c) = 3650 cents.
     await repositionWarehouse(NEW_YORK_ID, NYC, 10000, 10);
     const before = await countOrders();
 
@@ -174,7 +165,6 @@ describe("POST /v1/orders", () => {
         itemId: itemId,
         quantity: 10,
         shippingAddress: NYC,
-        // None of these should influence the computed order in any way.
         subtotalCents: 1,
         discountCents: 999999,
         shippingCents: 0,
@@ -184,7 +174,6 @@ describe("POST /v1/orders", () => {
       });
 
     expect(response.status).toBe(201);
-    // Server-computed values (qty 10, no discount tier, real distance), not the client's.
     expect(response.body.pricing.subtotalCents).toBe(150000);
     expect(response.body.pricing.discountCents).toBe(0);
     expect(response.body.pricing.shippingCents).toBeGreaterThan(0);
@@ -211,8 +200,6 @@ describe("POST /v1/orders", () => {
     const conflicted = responses.filter((r) => r.status !== 201);
     expect(created).toHaveLength(1);
     expect(conflicted).toHaveLength(1);
-    // Either a live conflict (409) or a pre-write rejection once the winner already committed
-    // (422) — see orderSubmissionService.test.ts for why both are legitimate depending on timing.
     expect([409, 422]).toContain(conflicted[0].status);
 
     expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(2);

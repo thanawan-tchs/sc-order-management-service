@@ -19,9 +19,6 @@ function buildTestApp() {
     ctx.body = { received: ctx.state.validated };
   });
 
-  // Real usage always mounts validateBody behind the central error handler (see app.ts) — it
-  // throws rather than setting ctx.status/body itself (ticket 15), so a test app needs the same
-  // middleware to see the same 400 response a real request would get.
   app.use(errorHandler);
   app.use(bodyParser());
   app.use(router.routes());

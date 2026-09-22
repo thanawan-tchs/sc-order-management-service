@@ -26,8 +26,6 @@ const ALL_WAREHOUSE_IDS = [
   WARSAW_ID,
   HONG_KONG_ID,
 ];
-// items is truncated + reseeded fresh by resetTestDb, but its id is a UUID (ticket "use item
-// id as uuid format"), generated fresh each time — captured in beforeEach rather than hardcoded.
 let itemId: string;
 
 async function repositionWarehouse(
@@ -94,7 +92,6 @@ describe("submitOrder — successful submission", () => {
     const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
     expect(inventory?.stock).toBe(80);
 
-    // Actually persisted, not just returned.
     const fetched = await orderRepository.getOrderByNumber(order.orderNumber);
     expect(fetched).toEqual(order);
   });
@@ -139,8 +136,6 @@ describe("submitOrder — invalid orders never touch inventory or create a row",
 
   it("rejects shipping cost exceeding 15% and leaves inventory untouched", async () => {
     await zeroOutStock(ALL_WAREHOUSE_IDS);
-    // qty 1: no discount, amountAfterDiscount = 15000 cents, 15% limit = 2250 cents.
-    // round(10000km * 0.365kg * 1c) = 3650 cents, well over the limit.
     await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10000, 10);
 
     const before = await countOrders();
@@ -168,7 +163,6 @@ describe("submitOrder — concurrency", () => {
 
     const before = await countOrders();
 
-    // Both requests want 8 of the only 10 available units — only one can win.
     const results = await Promise.allSettled([
       submitOrder({ itemId: itemId, quantity: 8, shippingAddress: DESTINATION }),
       submitOrder({ itemId: itemId, quantity: 8, shippingAddress: DESTINATION }),
@@ -179,20 +173,12 @@ describe("submitOrder — concurrency", () => {
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
     if (rejected[0].status === "rejected") {
-      // Depending on exactly how the two calls interleave, the loser either loses a live
-      // row-lock race inside decrementInventory (InsufficientStockError) or, if the winner's
-      // whole transaction already committed by the time the loser reads inventory, fails its
-      // own pre-write validity check instead (OrderSubmissionError) — both are correct, safe
-      // outcomes (no oversell, clean rollback); which one shows up isn't something a
-      // real-database integration test can pin down, so both are accepted here. The
-      // timing-independent proof of correctness is the final stock/order-count assertions below.
       const isExpectedErrorType =
         rejected[0].reason instanceof InsufficientStockError ||
         rejected[0].reason instanceof OrderSubmissionError;
       expect(isExpectedErrorType).toBe(true);
     }
 
-    // Only the winner's deduction persisted; only one order row exists.
     expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(2);
     expect(await countOrders()).toBe(before + 1);
   });
@@ -201,9 +187,6 @@ describe("submitOrder — concurrency", () => {
     "rolls back the WHOLE transaction — including an earlier line's already-applied " +
       "decrement — when a later allocation line loses a race for shared stock",
     async () => {
-      // Two different destinations, each with its own nearby "primary" warehouse (so the two
-      // concurrent orders don't contend for the same primary), plus one shared, distant,
-      // stock-constrained warehouse both orders must spill over into.
       const destination1 = { latitude: 0, longitude: 0 };
       const destination2 = { latitude: 0, longitude: 90 };
 
@@ -214,9 +197,6 @@ describe("submitOrder — concurrency", () => {
 
       const before = await countOrders();
 
-      // Each order needs 13: 10 from its own primary (uncontested) + 3 from the shared
-      // warehouse. Combined demand on the shared warehouse is 6, but it only has 5 — so one
-      // order's second line must fail, well after its first line already "succeeded".
       const results = await Promise.allSettled([
         submitOrder({ itemId: itemId, quantity: 13, shippingAddress: destination1 }),
         submitOrder({ itemId: itemId, quantity: 13, shippingAddress: destination2 }),
@@ -229,32 +209,19 @@ describe("submitOrder — concurrency", () => {
 
       const rejectedResult = results[rejectedIndex];
       if (rejectedResult.status === "rejected") {
-        // As in the simpler conflict test above: depending on exact interleaving, the loser
-        // either loses a live row-lock race on the shared warehouse (after its own primary
-        // decrement already succeeded — InsufficientStockError) or, if the winner's transaction
-        // already committed by the time the loser reads inventory, fails its own pre-write
-        // validity check before ever touching its primary warehouse (OrderSubmissionError). The
-        // stock assertions below are what actually prove full-transaction rollback either way:
-        // the loser's primary warehouse ends at its original 10 regardless of which path was
-        // taken (either "decremented then rolled back", or "never decremented at all").
         const isExpectedErrorType =
           rejectedResult.reason instanceof InsufficientStockError ||
           rejectedResult.reason instanceof OrderSubmissionError;
         expect(isExpectedErrorType).toBe(true);
       }
 
-      // The winner's primary warehouse is fully drained; the loser's primary warehouse is back
-      // to its original 10 — proving its earlier, individually-successful 10-unit decrement was
-      // undone along with the rest of its transaction.
       const winnerPrimaryId = fulfilledIndex === 0 ? LOS_ANGELES_ID : NEW_YORK_ID;
       const loserPrimaryId = fulfilledIndex === 0 ? NEW_YORK_ID : LOS_ANGELES_ID;
       expect((await warehouseRepository.getInventory(winnerPrimaryId, itemId))?.stock).toBe(0);
       expect((await warehouseRepository.getInventory(loserPrimaryId, itemId))?.stock).toBe(10);
 
-      // Only the winner's 3-unit draw from the shared warehouse persisted.
       expect((await warehouseRepository.getInventory(SAO_PAULO_ID, itemId))?.stock).toBe(2);
 
-      // Exactly one order was created.
       expect(await countOrders()).toBe(before + 1);
     }
   );
@@ -279,7 +246,6 @@ describe("submitOrder — idempotency (ticket 13)", () => {
 
     expect(second).toEqual(first);
     expect(await countOrders()).toBe(1);
-    // Decremented once, not twice.
     expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
   });
 
@@ -321,8 +287,6 @@ describe("submitOrder — idempotency (ticket 13)", () => {
 
     expect(a.orderNumber).toBe(b.orderNumber);
     expect(await countOrders()).toBe(1);
-    // Decremented exactly once, not once per caller — proof the "loser" of the idempotency-key
-    // race never applied its own decrement (or had it rolled back if it got that far).
     expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
   });
 
@@ -339,8 +303,6 @@ describe("submitOrder — idempotency (ticket 13)", () => {
     ).rejects.toBeInstanceOf(OrderSubmissionError);
     expect(await orderRepository.findOrderByIdempotencyKey("retry-after-failure")).toBeUndefined();
 
-    // Make the order fulfillable and retry with the SAME key — must not be blocked by the
-    // earlier failed attempt (ticket 13: "failed transaction does not consume idempotency state").
     await repositionWarehouse(LOS_ANGELES_ID, DESTINATION, 10, 100);
     const order = await submitOrder({
       itemId: itemId,
@@ -425,7 +387,6 @@ describe("submitOrder — idempotency key reused for a different request (ticket
       })
     ).rejects.toBeInstanceOf(IdempotencyKeyReusedError);
 
-    // The original order is untouched, and no second order/decrement happened.
     expect(await countOrders()).toBe(1);
     expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(80);
   });

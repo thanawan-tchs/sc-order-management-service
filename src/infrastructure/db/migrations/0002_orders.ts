@@ -3,10 +3,6 @@ import { Migration } from "./migration";
 export const migration_0002_orders: Migration = {
   id: "0002_orders",
   statements: [
-    // Backs order number generation (see orderRepository.ts). A sequence's nextval() is atomic
-    // under Postgres MVCC — concurrent submissions can never be handed the same value — which is
-    // what ticket 10 asks for ("safe under concurrent creation") without needing any locking of
-    // our own.
     `CREATE SEQUENCE IF NOT EXISTS order_number_seq`,
 
     `CREATE TABLE IF NOT EXISTS orders (

@@ -10,8 +10,6 @@ const app = createApp();
 const NYC = { latitude: 40.7128, longitude: -74.006 };
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
-// Matches the one seed item; its id is a UUID (ticket "use item id as uuid format"),
-// generated fresh by resetTestDb on every reset — captured in beforeEach rather than hardcoded.
 let itemId: string;
 
 async function repositionWarehouse(
@@ -121,10 +119,6 @@ describe("GET /v1/orders/:orderNumber", () => {
       .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     expect(submitResponse.status).toBe(201);
 
-    // Simulate "pricing rules changed since this order was placed" by directly corrupting the
-    // stored snapshot to values today's pricing.ts could never produce for this quantity. If the
-    // GET endpoint recalculated anything, it would return the *original*, real numbers instead
-    // of these — so getting these back proves it reads the stored row verbatim.
     await getPool().query(
       "UPDATE orders SET discount_rate = $1, discount_cents = $2, amount_after_discount_cents = $3 WHERE order_number = $4",
       [0.42, 63000, 87000, submitResponse.body.orderNumber]

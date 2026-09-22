@@ -7,9 +7,6 @@ import {
   getDiscountRate,
 } from "./pricing";
 
-// Matches the one seed item's price (migrations/0006_item_aware_inventory_and_orders.ts) —
-// calculateSubtotal takes the unit price as a parameter rather than a hardcoded constant, so
-// tests supply it explicitly.
 const UNIT_PRICE_CENTS = toMoney(15000);
 
 describe("calculateSubtotal", () => {
@@ -26,7 +23,6 @@ describe("calculateSubtotal", () => {
 });
 
 describe("getDiscountRate boundaries", () => {
-  // Explicit boundary quantities called out by ticket 04.
   it.each([
     [24, 0],
     [25, 0.05],

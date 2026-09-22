@@ -8,9 +8,6 @@ import { pointAtDistanceFromOrigin } from "../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 
-// Matches the one seed item's price/weight (migrations/0006_item_aware_inventory_and_orders.ts)
-// so the pricing/shipping math in these tests lines up with the same numbers the integration
-// tests exercise against the real seeded item.
 const UNIT_WEIGHT_KG = 0.365;
 const TEST_ITEM_ID = "test-item-id";
 const TEST_ITEM: Item = { id: TEST_ITEM_ID, name: "Standard Unit", priceCents: toMoney(15000), weightKg: UNIT_WEIGHT_KG };
@@ -20,8 +17,6 @@ function candidateAtDistance(distanceKm: number, warehouseId: number, stock: num
   return { warehouseId, latitude, longitude, stock };
 }
 
-/** Injects a fixed, synthetic warehouse snapshot and item so these are true isolated unit tests —
- *  no database, no HTTP — of the service's orchestration logic (ticket 08 DoD). */
 function withCandidates(candidates: WarehouseCandidate[], item: Item = TEST_ITEM): OrderQuoteDependencies {
   return {
     readWarehouseCandidates: async () => candidates,
@@ -35,7 +30,6 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 10, shippingAddress: DESTINATION }, deps);
 
-    // subtotal = 10 * 15000 = 150000; qty 10 is below the first (25-unit) discount tier.
     expect(quote.quantity).toBe(10);
     expect(quote.item).toEqual(TEST_ITEM);
     expect(quote.subtotalCents).toBe(150000);
@@ -43,7 +37,6 @@ describe("getOrderQuote", () => {
     expect(quote.discountCents).toBe(0);
     expect(quote.amountAfterDiscountCents).toBe(150000);
     expect(quote.totalWeightKg).toBeCloseTo(10 * UNIT_WEIGHT_KG, 10);
-    // shipping = round(50km * (10 * 0.365kg) * 1c) = round(182.5) = 183.
     expect(quote.shippingCostCents).toBe(183);
     expect(quote.totalCents).toBe(150000 + 183);
     expect(quote.allocations).toHaveLength(1);
@@ -109,7 +102,6 @@ describe("getOrderQuote", () => {
     expect(quote.allocations[0]).toMatchObject({ warehouseId: 1, quantity: 50, shippingCostCents: 1825 });
     expect(quote.allocations[1]).toMatchObject({ warehouseId: 2, quantity: 30, shippingCostCents: 2190 });
     expect(quote.shippingCostCents).toBe(4015);
-    // qty 80 -> 10% tier.
     expect(quote.discountRate).toBe(0.1);
     expect(quote.valid).toBe(true);
   });
@@ -122,13 +114,10 @@ describe("getOrderQuote", () => {
     expect(quote.valid).toBe(false);
     expect(quote.invalidReasons).toEqual(["INSUFFICIENT_STOCK"]);
     expect(quote.allocations).toEqual([expect.objectContaining({ warehouseId: 1, quantity: 10 })]);
-    // Pricing still reflects the requested quantity, not the fulfillable amount.
     expect(quote.subtotalCents).toBe(50 * 15000);
   });
 
   it("flags shipping cost exceeding 15% of the discounted amount as invalid", async () => {
-    // qty 1: no discount, amountAfterDiscount = 15000 cents, 15% limit = 2250 cents.
-    // A 10,000km shipment of one 0.365kg unit costs round(10000 * 0.365) = 3650 cents.
     const deps = withCandidates([candidateAtDistance(10000, 1, 10)]);
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION }, deps);
@@ -140,8 +129,6 @@ describe("getOrderQuote", () => {
   });
 
   it("treats shipping cost exactly at 15% as valid (inclusive boundary)", async () => {
-    // qty 1: amountAfterDiscount = 15000 cents, 15% limit = 2250 cents exactly.
-    // Pick a distance that makes shippingCostCents land on exactly 2250.
     const distanceForExactly2250Cents = 2250 / (1 * UNIT_WEIGHT_KG);
     const deps = withCandidates([candidateAtDistance(distanceForExactly2250Cents, 1, 10)]);
 
@@ -158,7 +145,6 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 5, shippingAddress: DESTINATION }, deps);
 
-    // amountAfterDiscount = 75000, 15% limit = 11250; shipping = round(20 * 5*0.365) = 37.
     expect(quote.shippingCostCents).toBe(37);
     expect(quote.shippingCostCents).toBeLessThan(11250);
     expect(quote.valid).toBe(true);
@@ -172,9 +158,6 @@ describe("getOrderQuote", () => {
 
     await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 20, shippingAddress: DESTINATION }, deps);
 
-    // The only "side effect" available to this service is reading — assert the stock snapshot
-    // it read is untouched, since there is no order/inventory write path to call in the first
-    // place (no repository import that mutates state is reachable from getOrderQuote).
     expect(candidates).toEqual(snapshot);
   });
 });

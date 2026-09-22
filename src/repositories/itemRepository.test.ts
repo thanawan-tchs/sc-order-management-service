@@ -4,14 +4,8 @@ import { closePool } from "../infrastructure/db/pool";
 import { resetTestDb } from "../../tests/helpers/db";
 import * as itemRepository from "./itemRepository";
 
-// A syntactically valid UUID that will never match a real row — used to test the "not found"
-// path. A malformed string (e.g. "999") would fail at the SQL level (invalid input syntax for
-// type uuid) rather than exercising the "no matching row" case this is actually testing.
 const NONEXISTENT_ITEM_ID = "00000000-0000-0000-0000-000000000000";
 
-// items is truncated + reseeded fresh by resetTestDb (RESTART IDENTITY), same as warehouses — but
-// its id is a UUID (ticket "use item id as uuid format"), generated fresh on every reset, so it's
-// captured here rather than hardcoded.
 let itemId: string;
 
 beforeEach(async () => {

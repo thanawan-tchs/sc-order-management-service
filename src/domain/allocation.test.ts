@@ -5,9 +5,6 @@ import { pointAtDistanceFromOrigin } from "../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 
-// unitWeightKg = 1, rate = 1 cent/kg/km throughout, so cost-per-unit (in cents) == distanceKm
-// exactly — lets every expected number below be hand-computed rather than re-derived from the
-// code under test.
 const WEIGHT_KG = 1;
 const RATE = 1;
 
@@ -59,7 +56,6 @@ describe("allocateOrder", () => {
   });
 
   it("three warehouses: matches the ticket's own worked example (A=100, B=20, C=0)", () => {
-    // A: $1/unit, 100 stock. B: $2/unit, 50 stock. C: $3/unit, 200 stock. Order: 120.
     const a = warehouseAtDistance(100, 1, 100); // 100 cents/unit = $1
     const b = warehouseAtDistance(200, 2, 50); // 200 cents/unit = $2
     const c = warehouseAtDistance(300, 3, 200); // 300 cents/unit = $3
@@ -81,7 +77,6 @@ describe("allocateOrder", () => {
         shippingCostCents: 4000,
       },
     ]);
-    // Warehouse C is never touched — cheaper stock covered the whole order.
     expect(result.allocations.find((line) => line.warehouseId === 3)).toBeUndefined();
     expect(result.totalShippingCostCents).toBe(14000); // $140.00
   });
@@ -135,7 +130,6 @@ describe("allocateOrder", () => {
     const lowerId = warehouseAtDistance(sameDistance, 1, 30);
     const higherId = warehouseAtDistance(sameDistance, 2, 40);
 
-    // Pass in reverse order to prove the tie-break isn't just "input order preserved".
     const result = allocateOrder(50, DESTINATION, [higherId, lowerId], WEIGHT_KG, RATE);
 
     expect(result.fulfilled).toBe(true);
@@ -168,7 +162,6 @@ describe("allocateOrder", () => {
       { warehouseId: 2, quantity: 30000 },
       { warehouseId: 3, quantity: 30000 },
       { warehouseId: 4, quantity: 10000 },
-      // warehouseId 5 (farthest) is never needed.
     ]);
     const totalAllocated = result.allocations.reduce((sum, l) => sum + l.quantity, 0);
     expect(totalAllocated).toBe(100000);

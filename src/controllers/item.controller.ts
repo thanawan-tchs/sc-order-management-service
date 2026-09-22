@@ -17,9 +17,6 @@ function toItemResponse(item: Item): ItemResponseBody {
   return { id: item.id, name: item.name, priceCents: item.priceCents, weightKg: item.weightKg };
 }
 
-/** POST /v1/items. Request body is already parsed/validated by `validateBody` (see items.route.ts)
- *  before this handler runs — all that's left is calling the application service and mapping its
- *  result to the wire format. */
 export async function createItem(ctx: Context): Promise<void> {
   const input = ctx.state.validated as ItemRequestInput;
   const item = await itemService.createItem({
@@ -32,7 +29,6 @@ export async function createItem(ctx: Context): Promise<void> {
   ctx.body = toItemResponse(item);
 }
 
-/** GET /v1/items. Lists the full catalog — no pagination/filtering yet, fine at today's scale. */
 export async function listItems(ctx: Context): Promise<void> {
   const items = await itemService.getAllItems();
 
@@ -42,10 +38,6 @@ export async function listItems(ctx: Context): Promise<void> {
 
 const itemIdParamSchema = z.string().uuid();
 
-/** GET /v1/items/:itemId. `itemId` is a route param, not a request body, so it isn't covered by
- *  `validateBody` — checked here instead, and rejected the same way (400 `INVALID_ITEM_ID`) a
- *  malformed `itemId` in an order request body already is, rather than letting a non-UUID string
- *  reach the database and surface as an opaque 500. */
 export async function getItem(ctx: Context): Promise<void> {
   const { itemId } = ctx.params;
   ctx.state.itemId = itemId;

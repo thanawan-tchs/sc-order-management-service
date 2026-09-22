@@ -2,15 +2,6 @@ import { Pool } from "pg";
 import { getPool } from "./pool";
 import { SEED_ITEMS, SEED_WAREHOUSES } from "../../config";
 
-/**
- * Seeds `items` if empty, then the 6 warehouses + their starting stock (of that item) if
- * `warehouses` is empty — each table checked independently, so this is safe to call whenever
- * only one of the two has already been seeded (e.g. a database migration 0006 already backfilled
- * with its own item, where `items` is non-empty but this function has never run against it).
- * Returns the seeded item's id (a UUID, ticket "use item id as uuid format") — there's no fixed
- * value to hardcode/assert on the way there used to be with an auto-incrementing integer id, so
- * callers (tests included) that need it must read it from here.
- */
 export async function seed(): Promise<string> {
   const pool = getPool();
 

@@ -8,12 +8,6 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
-/**
- * Applies every migration from migrations/index.ts that schema_migrations doesn't already record,
- * in order, each in its own transaction alongside the row that marks it applied — so a failure
- * partway through a migration never leaves it half-applied-but-unmarked (it just retries next
- * time). Safe to call on every startup or test reset: an already-applied migration is skipped.
- */
 export async function migrate(): Promise<void> {
   const pool = getPool();
   await pool.query(MIGRATIONS_TABLE_SQL);

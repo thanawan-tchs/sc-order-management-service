@@ -5,22 +5,11 @@ import { closePool, getPool } from "../../src/infrastructure/db/pool";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
 
-/**
- * Ticket 16: confidence in the COMPLETE order lifecycle — quote, submit, and get chained
- * together for the same request, not just each endpoint tested in isolation (which the other
- * integration test files already do thoroughly). Also closes two specific gaps that audit found:
- * no integration test exercised a *valid* quantity-1 order (only the invalid-shipping edge case
- * happened to use quantity 1), and "shipping exactly 15%" was only verified at the application
- * service level, never through real HTTP requests.
- */
-
 const app = createApp();
 
 const NYC = { latitude: 40.7128, longitude: -74.006 };
 const NEW_YORK_ID = 2;
 const ALL_WAREHOUSE_IDS = [1, 2, 3, 4, 5, 6];
-// Matches the one seed item's weight; its id is a UUID (ticket "use item id as uuid format"),
-// generated fresh by resetTestDb on every reset — captured in beforeEach rather than hardcoded.
 let itemId: string;
 const UNIT_WEIGHT_KG = 0.365;
 
@@ -63,8 +52,6 @@ afterAll(async () => {
 });
 
 describe("order lifecycle: quote -> submit -> get stay consistent", () => {
-  // Every discount-tier boundary quantity ticket 16 calls out by name, plus 1 (the smallest
-  // possible order) and 24 (just under the first tier).
   it.each([1, 24, 25, 49, 50, 99, 100, 249, 250])(
     "quantity %i: the quote is an accurate preview of what submit persists, and get returns exactly that",
     async (quantity) => {
@@ -82,7 +69,6 @@ describe("order lifecycle: quote -> submit -> get stay consistent", () => {
         .send({ itemId: itemId, quantity, shippingAddress: NYC });
       expect(submitResponse.status).toBe(201);
 
-      // The quote is a preview of exactly what submit produces — same pricing, same allocation.
       expect(submitResponse.body.pricing).toEqual(quoteResponse.body.pricing);
       expect(submitResponse.body.shipping.allocations).toEqual(
         quoteResponse.body.shipping.allocations
@@ -93,7 +79,6 @@ describe("order lifecycle: quote -> submit -> get stay consistent", () => {
       );
       expect(getResponse.status).toBe(200);
 
-      // What was submitted is exactly what's retrievable afterward.
       expect(getResponse.body.quantity).toBe(quantity);
       expect(getResponse.body.pricing).toEqual(submitResponse.body.pricing);
       expect(getResponse.body.shipping.allocations).toEqual(
@@ -106,10 +91,6 @@ describe("order lifecycle: quote -> submit -> get stay consistent", () => {
 
 describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
   it("quote reports it valid, and it submits successfully, through real HTTP requests", async () => {
-    // qty 1: no discount, amountAfterDiscount = 15000 cents, 15% limit = 2250 cents exactly.
-    // Choosing the distance that puts shippingCostCents exactly on that boundary. Other
-    // warehouses are zeroed out so a real-world-positioned one can't end up cheaper than New
-    // York once it's artificially moved this far away.
     await zeroOutStock(ALL_WAREHOUSE_IDS);
     const distanceForExactly2250Cents = 2250 / (1 * UNIT_WEIGHT_KG);
     await repositionWarehouse(NEW_YORK_ID, NYC, distanceForExactly2250Cents, 10);

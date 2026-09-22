@@ -7,8 +7,6 @@ function fakeLogger() {
   return Object.assign(Object.create(logger), { info: vi.fn(), error: vi.fn(), warn: vi.fn() }) as typeof logger;
 }
 
-/** A minimal fake satisfying `Pick<Server, "close">` — real `http.Server#close` returns `this`
- *  for chaining, which these one-off test doubles have no need to fake beyond the type cast. */
 function fakeServer(close: (cb: (err?: Error) => void) => void): Pick<Server, "close"> {
   return { close } as unknown as Pick<Server, "close">;
 }
@@ -93,9 +91,6 @@ describe("createShutdownHandler", () => {
       await vi.advanceTimersByTimeAsync(1000);
 
       expect(exit).toHaveBeenCalledWith(1);
-      // Prevent an unhandled-rejection/dangling-promise warning; this promise never resolves in
-      // this scenario by design (server.close never calls back), which is fine — the force-exit
-      // path is what's under test here, not the promise settling.
       void shutdownPromise;
     } finally {
       vi.useRealTimers();

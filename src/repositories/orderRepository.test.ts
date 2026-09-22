@@ -6,12 +6,9 @@ import { closePool } from "../infrastructure/db/pool";
 import * as orderRepository from "./orderRepository";
 import { resetTestDb } from "../../tests/helpers/db";
 
-// Seed order is fixed and resetTestDb() restarts identities, so these are reliably stable.
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 
-// items is truncated + reseeded fresh by resetTestDb, but its id is a UUID (ticket "use item id
-// as uuid format"), generated fresh each time — captured here rather than hardcoded.
 let defaultItem: Item;
 
 function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
@@ -82,7 +79,6 @@ describe("createOrder", () => {
       ])
     );
 
-    // Confirm it's actually in the database, not just echoed back from the input.
     const fetched = await orderRepository.getOrderByNumber(order.orderNumber);
     expect(fetched?.allocations).toHaveLength(2);
   });
@@ -100,9 +96,6 @@ describe("createOrder", () => {
   });
 
   it("preserves the exact pricing snapshot, independent of today's pricing rules", async () => {
-    // Values today's pricing.ts (25+ -> 5%, 50+ -> 10%, ...) would never produce for this
-    // quantity — proving the repository stores exactly what it's given rather than
-    // recalculating anything (ticket 10's "Snapshot Principle").
     const quote = buildQuote({
       quantity: 10,
       subtotalCents: toMoney(999999),
@@ -125,8 +118,6 @@ describe("createOrder", () => {
   });
 
   it("preserves the item snapshot, independent of the catalog's current values", async () => {
-    // A name/price/weight that don't match the live items row — proving createOrder stores
-    // exactly the item snapshot it's given, same Snapshot Principle as pricing above.
     const quote = buildQuote({
       item: { id: defaultItem.id, name: "Renamed Product", priceCents: toMoney(99999), weightKg: 1.23 },
     });
@@ -182,13 +173,10 @@ describe("recordIdempotencyKey / findOrderByIdempotencyKey", () => {
       IdempotencyKeyConflictError
     );
 
-    // The original claim is untouched.
     expect((await orderRepository.findOrderByIdempotencyKey("dup-key"))?.orderNumber).toBe(first.orderNumber);
   });
 
   it("allows the same order to be claimed under two different keys", async () => {
-    // Not a scenario the application layer produces, but nothing about the schema forbids it —
-    // confirms the PRIMARY KEY constraint is on `key` alone, not `(key, order_number)`.
     const order = await orderRepository.createOrder(buildQuote());
 
     await orderRepository.recordIdempotencyKey("key-a", order.orderNumber);

@@ -3,38 +3,23 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL ?? "postgres://app:app@localhost:5433/orders",
 
-  /** pino level: "fatal" | "error" | "warn" | "info" | "debug" | "trace" | "silent". */
   logLevel: process.env.LOG_LEVEL ?? "info",
 
-  // Connection-pool configuration (ticket 17) — all overridable per-environment; defaults are
-  // reasonable for a single small instance, not tuned for any specific production scale.
   dbPoolMax: Number(process.env.DB_POOL_MAX ?? 10),
   dbIdleTimeoutMs: Number(process.env.DB_IDLE_TIMEOUT_MS ?? 30_000),
   dbConnectionTimeoutMs: Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 5_000),
-  /** Postgres-enforced `statement_timeout` — aborts any single query running longer than this,
-   *  server-side, regardless of what the client is doing. */
   dbStatementTimeoutMs: Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 10_000),
 
-  /** Node's http.Server-level timeouts — abort a request that hangs too long, independent of
-   *  anything happening (or not) inside the app. */
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS ?? 30_000),
   headersTimeoutMs: Number(process.env.HEADERS_TIMEOUT_MS ?? 31_000),
 
-  /** How long graceful shutdown waits for in-flight requests + the DB pool to close before
-   *  forcing exit. */
   shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 10_000),
 };
 
-/** $0.01 per kilogram per kilometer, expressed in cents so shipping cost stays integer-cent-based. */
 export const SHIPPING_RATE_CENTS_PER_KG_KM = 1;
 
-/** Single-currency v1; stored per order (ticket 10) rather than assumed, so a multi-currency
- *  future doesn't require a migration to add the column. */
 export const CURRENCY = "USD";
 
-/** The one item `seed.ts` inserts if `items` is empty — same values migration 0006 uses to
- *  backfill a pre-existing database's `inventory`/`orders` rows, so a fresh database (test or
- *  dev) and a database upgraded from before the `items` table both converge on this one item. */
 export const SEED_ITEMS = [{ name: "Standard Unit", priceCents: 15000, weightKg: 0.365 }];
 
 export const SEED_WAREHOUSES = [

@@ -5,16 +5,10 @@ import { closePool, getPool } from "../infrastructure/db/pool";
 import * as warehouseRepository from "./warehouseRepository";
 import { resetTestDb } from "../../tests/helpers/db";
 
-// Seed order is fixed and RESTART IDENTITY resets ids to 1..6 on each reset, so "Los Angeles" is
-// reliably warehouse id 1 with its seed stock of 355.
 const LOS_ANGELES_ID = 1;
 const LOS_ANGELES_STOCK = SEED_WAREHOUSES[0].stock;
-// A syntactically valid UUID that will never match a real item — a malformed string would fail
-// at the SQL level (invalid input syntax for type uuid) rather than exercising "no such item".
 const NONEXISTENT_ITEM_ID = "00000000-0000-0000-0000-000000000000";
 
-// items is reset the same way as warehouses (truncated + reseeded by resetTestDb), but its id is
-// a UUID (ticket "use item id as uuid format"), generated fresh each time, so it's captured here.
 let itemId: string;
 
 beforeEach(async () => {
@@ -100,13 +94,11 @@ describe("decrementInventory", () => {
   });
 
   it("never lets concurrent deductions oversell stock", async () => {
-    // Pin this warehouse to a small, known stock so the race is deterministic to assert on.
     await getPool().query("UPDATE inventory SET stock = 10 WHERE warehouse_id = $1 AND item_id = $2", [
       LOS_ANGELES_ID,
       itemId,
     ]);
 
-    // 15 concurrent 1-unit deductions against 10 units of stock: exactly 10 must succeed.
     const attempts = Array.from({ length: 15 }, () => warehouseRepository.decrementInventory(LOS_ANGELES_ID, itemId, 1));
     const results = await Promise.allSettled(attempts);
 

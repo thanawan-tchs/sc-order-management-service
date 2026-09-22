@@ -21,7 +21,6 @@ describe("isShippingCostWithinLimit", () => {
   });
 
   describe("the exact 15% boundary (inclusive)", () => {
-    // 15% of 10000 cents is exactly 1500 cents — no rounding ambiguity in this fixture at all.
     const amountAfterDiscountCents = toMoney(10000);
     const exactlyFifteenPercent = toMoney(1500);
 
@@ -39,8 +38,6 @@ describe("isShippingCostWithinLimit", () => {
   });
 
   it("holds exactly at 15% across a range of amounts, not just one convenient fixture", () => {
-    // For every amount below, amount * 0.15 lands on a whole cent, so `exactlyFifteenPercent`
-    // is unambiguous — checked across several magnitudes to rule out a fluke at one scale.
     for (const amountAfterDiscountCents of [20, 200, 2000, 20000, 200000, 2000000]) {
       const exactlyFifteenPercent = Math.round(amountAfterDiscountCents * 0.15);
       expect(
@@ -53,10 +50,6 @@ describe("isShippingCostWithinLimit", () => {
   });
 
   it("is not fooled by 0.15's binary floating-point representation at the boundary", () => {
-    // 150000 * 0.15 computed via the literal float 0.15 can drift from the true integer value —
-    // this fixture is chosen so that drift, if the implementation used `* 0.15` directly instead
-    // of the integer cross-multiplication it actually uses, would flip the wrong way at the
-    // boundary. Exercising it here pins down that the implementation is doing the safe thing.
     const amountAfterDiscountCents = toMoney(150000);
     const exactlyFifteenPercent = toMoney(22500);
 

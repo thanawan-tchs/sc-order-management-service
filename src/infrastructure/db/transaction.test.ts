@@ -6,8 +6,6 @@ import { resetTestDb } from "../../../tests/helpers/db";
 
 const LOS_ANGELES_ID = 1;
 const LOS_ANGELES_STOCK = 355;
-// items is truncated + reseeded fresh by resetTestDb, but its id is a UUID (ticket "use item
-// id as uuid format"), generated fresh each time — captured in beforeEach rather than hardcoded.
 let itemId: string;
 
 beforeEach(async () => {
@@ -41,14 +39,11 @@ describe("withTransaction", () => {
 
       await expect(
         withTransaction(async (client) => {
-          // This decrement succeeds inside the transaction...
           await warehouseRepository.decrementInventory(LOS_ANGELES_ID, itemId, 50, client);
-          // ...but a later step in the same transaction fails, well after that write.
           throw simulatedFailure;
         })
       ).rejects.toBe(simulatedFailure);
 
-      // The earlier "successful" decrement must not have survived the rollback.
       const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
       expect(inventory?.stock).toBe(LOS_ANGELES_STOCK);
     }
@@ -59,8 +54,6 @@ describe("withTransaction", () => {
       await withTransaction(async () => undefined).catch(() => undefined);
     }
 
-    // If `finally { client.release() }` weren't happening, this would hang waiting for a free
-    // connection (the pool's default max size is well under 15) instead of resolving promptly.
     await expect(withTransaction(async () => "still working")).resolves.toBe("still working");
   });
 
@@ -81,7 +74,6 @@ describe("withTransaction against a fresh reader (not the transaction's own clie
       await warehouseRepository.decrementInventory(LOS_ANGELES_ID, itemId, 10, client);
     });
 
-    // A plain pool query — a different connection than the one the transaction used.
     const { rows } = await getPool().query<{ stock: number }>(
       "SELECT stock FROM inventory WHERE warehouse_id = $1 AND item_id = $2",
       [LOS_ANGELES_ID, itemId]

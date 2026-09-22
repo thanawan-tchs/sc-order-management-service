@@ -9,16 +9,6 @@ export interface GracefulShutdownDependencies {
   timeoutMs: number;
 }
 
-/**
- * Ticket 17: on SIGTERM/SIGINT, stop accepting new HTTP connections (letting in-flight ones
- * finish — `http.Server#close`'s normal behavior), close the database pool, then exit. Forces
- * exit after `timeoutMs` if something hangs (a connection that never finishes, a pool that never
- * closes), so the process doesn't sit alive-but-unresponsive forever.
- *
- * Everything the shutdown sequence touches is a dependency, not a direct call to `process.exit`
- * or the real pool — that's what makes this testable without actually killing a process or
- * standing up a real server (see server.ts for the real wiring).
- */
 export function createShutdownHandler(deps: GracefulShutdownDependencies): (signal: string) => Promise<void> {
   let shuttingDown = false;
 

@@ -1,50 +1,32 @@
 import { Context, Next } from "koa";
 import { ZodIssue, ZodSchema } from "zod";
 import exception, { ValidationError } from "@domain/errors";
-import { CURRENCIES } from "@domain/money";
 
-// TODO: to be improve
+const FIELD_OVERRIDES: Record<string, { code?: string; message?: string }> = {
+  name: { code: "INVALID_ITEM_NAME" },
+};
+
+function toScreamingSnakeCase(field: string): string {
+  return field.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+}
+
 function toValidationError(issues: ZodIssue[]): ValidationError {
   const [issue] = issues;
-  const path = issue.path.join(".");
+  const field = issue.path.length > 0 ? String(issue.path[issue.path.length - 1]) : undefined;
 
-  if (path === "itemId") {
-    return new exception.ValidationError("INVALID_ITEM_ID", "itemId is required and must be a valid UUID.");
+  if (!field) {
+    return new exception.ValidationError("VALIDATION_ERROR", issue.message);
   }
-  if (path === "quantity") {
-    return new exception.ValidationError("INVALID_QUANTITY", "Quantity is required and must be a positive integer.");
+
+  const isMissing = issue.code === "invalid_type" && issue.received === "undefined";
+  if (isMissing) {
+    return new exception.ValidationError("VALIDATION_ERROR", `${field} is required`);
   }
-  if (path === "shippingAddress.latitude") {
-    return new exception.ValidationError(
-      "INVALID_LATITUDE",
-      "Latitude is required and must be between -90 and 90."
-    );
-  }
-  if (path === "shippingAddress.longitude") {
-    return new exception.ValidationError(
-      "INVALID_LONGITUDE",
-      "Longitude is required and must be between -180 and 180."
-    );
-  }
-  if (path === "name") {
-    return new exception.ValidationError("INVALID_ITEM_NAME", "name is required and must be a non-empty string.");
-  }
-  if (path === "price") {
-    return new exception.ValidationError(
-      "INVALID_PRICE",
-      "price is required and must be a positive integer."
-    );
-  }
-  if (path === "currency") {
-    return new exception.ValidationError(
-      "INVALID_CURRENCY",
-      `currency is required and must be one of: ${CURRENCIES.join(", ")}.`
-    );
-  }
-  if (path === "weightKg") {
-    return new exception.ValidationError("INVALID_WEIGHT_KG", "weightKg is required and must be a positive number.");
-  }
-  return new exception.ValidationError("VALIDATION_ERROR", issue.message);
+
+  const override = FIELD_OVERRIDES[field];
+  const code = override?.code ?? `INVALID_${toScreamingSnakeCase(field)}`;
+  const message = override?.message ?? issue.message;
+  return new exception.ValidationError(code, message);
 }
 
 export function validateBody<T>(schema: ZodSchema<T>) {

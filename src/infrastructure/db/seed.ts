@@ -1,40 +1,36 @@
-import { Pool } from "pg";
-import { getPool } from "./pool";
 import { SEED_ITEMS, SEED_WAREHOUSES } from "@config";
+import { PrismaClient } from "@generated/prisma/client";
+import { getPrismaClient } from "./prismaClient";
 
 export async function seed(): Promise<string> {
-  const pool = getPool();
+  const prisma = getPrismaClient();
 
-  const itemId = await seedItems(pool);
-  await seedWarehouses(pool, itemId);
+  const itemId = await seedItems(prisma);
+  await seedWarehouses(prisma, itemId);
   return itemId;
 }
 
-async function seedItems(pool: Pool): Promise<string> {
-  const { rows } = await pool.query<{ id: string }>("SELECT id FROM items ORDER BY id LIMIT 1");
-  if (rows[0]) return rows[0].id;
+async function seedItems(prisma: PrismaClient): Promise<string> {
+  const existing = await prisma.item.findFirst({ orderBy: { id: "asc" } });
+  if (existing) return existing.id;
 
   const [item] = SEED_ITEMS;
-  const { rows: inserted } = await pool.query<{ id: string }>(
-    "INSERT INTO items (name, price, currency, weight_kg) VALUES ($1, $2, $3, $4) RETURNING id",
-    [item.name, item.price, item.currency, item.weightKg]
-  );
-  return inserted[0].id;
+  const created = await prisma.item.create({
+    data: { name: item.name, price: item.price, currency: item.currency, weightKg: item.weightKg },
+  });
+  return created.id;
 }
 
-async function seedWarehouses(pool: Pool, itemId: string): Promise<void> {
-  const { rows } = await pool.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM warehouses");
-  if (rows[0].count > 0) return;
+async function seedWarehouses(prisma: PrismaClient, itemId: string): Promise<void> {
+  const count = await prisma.warehouse.count();
+  if (count > 0) return;
 
   for (const warehouse of SEED_WAREHOUSES) {
-    const { rows: inserted } = await pool.query<{ id: number }>(
-      "INSERT INTO warehouses (name, latitude, longitude) VALUES ($1, $2, $3) RETURNING id",
-      [warehouse.name, warehouse.latitude, warehouse.longitude]
-    );
-    await pool.query("INSERT INTO inventory (warehouse_id, item_id, stock) VALUES ($1, $2, $3)", [
-      inserted[0].id,
-      itemId,
-      warehouse.stock,
-    ]);
+    const created = await prisma.warehouse.create({
+      data: { name: warehouse.name, latitude: warehouse.latitude, longitude: warehouse.longitude },
+    });
+    await prisma.inventory.create({
+      data: { warehouseId: created.id, itemId, stock: warehouse.stock },
+    });
   }
 }

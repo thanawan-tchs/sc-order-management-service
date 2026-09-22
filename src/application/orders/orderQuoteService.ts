@@ -11,7 +11,7 @@ import {
 import { OrderQuote } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
 import { InvalidOrderReason, isShippingCostWithinLimit } from "@domain/validity";
-import { QueryExecutor, getPool } from "@infrastructure/db/pool";
+import { QueryExecutor, getPrismaClient } from "@infrastructure/db/prismaClient";
 import itemRepository from "@repositories/itemRepository";
 import warehouseRepository from "@repositories/warehouseRepository";
 
@@ -23,7 +23,7 @@ export interface OrderQuoteInput {
 
 export async function readWarehouseCandidates(
   itemId: string,
-  executor: QueryExecutor = getPool()
+  executor: QueryExecutor = getPrismaClient()
 ): Promise<WarehouseCandidate[]> {
   const warehouses = await warehouseRepository.getAllWarehouses(executor);
 
@@ -43,7 +43,7 @@ export async function readWarehouseCandidates(
 
 export async function getOrderQuote(
   input: OrderQuoteInput,
-  executor: QueryExecutor = getPool()
+  executor: QueryExecutor = getPrismaClient()
 ): Promise<OrderQuote> {
   const item = await itemRepository.getItem(input.itemId, executor);
   if (!item) {

@@ -39,25 +39,27 @@ Run a single unit test file: `npx mocha src/domain/pricing.test.ts`. Run by name
 `npx vitest run tests/integration/orderQuote.api.test.ts`.
 
 **Unit tests (`npm run test:unit`, mocha + chai + sinon) never touch a real database** — every
-repository/service/infrastructure test injects a fake `QueryExecutor` (or stubs `getPool`/`pg.Pool`
-directly via sinon) rather than hitting Postgres; see `.mocharc.json` (loader: `ts-node/register`
-— NOT `tsx`, whose esbuild-based CJS output makes exports non-configurable and unstubbable by
-sinon) and `tests/mochaSetup.ts` (registers `chai-as-promised`). **Only `test:api` (vitest,
-`tests/integration/`) hits a real Postgres `orders_test` database.** It no longer requires
+repository/service/infrastructure test injects a fake `QueryExecutor` (or stubs
+`getPrismaClient` directly via sinon) rather than hitting Postgres; see `.mocharc.json` (loader:
+`ts-node/register` — NOT `tsx`, whose esbuild-based CJS output makes exports non-configurable and
+unstubbable by sinon) and `tests/mochaSetup.ts` (registers `chai-as-promised`). **Only `test:api`
+(vitest, `tests/integration/`) hits a real Postgres `orders_test` database.** It no longer requires
 `npm run db:up`/Docker: `vitest.config.ts`'s `globalSetup` (`tests/globalSetup.ts`) boots a real
 Postgres via the `embedded-postgres` package — an actual `postgres` binary run as a plain
-subprocess, not a container — the first time `TEST_DATABASE_URL` isn't already set, and tears it
-down after the run. If `TEST_DATABASE_URL` *is* already set (as CI's `postgres:16-alpine` service
-container does — see `.github/workflows/ci.yml`), that's used instead and embedded-postgres never
-starts. `npm run db:up`'s docker-compose Postgres still exists for local `npm run dev` against
-persistent dev data; it's just no longer on the critical path for `test:api`.
+subprocess, not a container — the first time `TEST_DATABASE_URL` isn't already set, runs
+`prisma migrate deploy` against it once, and tears the database down after the run. If
+`TEST_DATABASE_URL` *is* already set (as CI's `postgres:16-alpine` service container does — see
+`.github/workflows/ci.yml`), that's used instead and embedded-postgres never starts, but
+`prisma migrate deploy` still runs once against it in `globalSetup`. `npm run db:up`'s
+docker-compose Postgres still exists for local `npm run dev` against persistent dev data; it's just
+no longer on the critical path for `test:api`.
 
 ## Architecture
 
 **Layering** (controllers never contain business logic; each layer only talks to the one below it):
 
 ```
-routes/ -> controllers/ -> application/ (services) -> repositories/ -> infrastructure/db/ (pg)
+routes/ -> controllers/ -> application/ (services) -> repositories/ -> infrastructure/db/ (Prisma Client)
                                  |
                               domain/ (pure functions/types, no I/O)
 ```
@@ -78,10 +80,12 @@ routes/ -> controllers/ -> application/ (services) -> repositories/ -> infrastru
   transaction, followed by inventory decrements + order creation only if valid) both live in
   `orders/`. `orderSubmissionService` reuses `orderQuoteService`'s functions directly rather than
   duplicating the calculation — this is the load-bearing reason the two must stay API-compatible.
-- **`repositories/`** — the only layer that writes raw SQL. Every function takes an optional
-  `executor: QueryExecutor` (defaults to the shared pool) so a caller can pass an in-flight
-  transaction `PoolClient` instead — this is how `orderSubmissionService` composes multiple
-  repository calls into one atomic unit.
+- **`repositories/`** — the only layer that talks to Prisma Client directly. Every function takes
+  an optional `executor: QueryExecutor` (`PrismaClient | Prisma.TransactionClient`, defaults to the
+  shared client) so a caller can pass an in-flight transaction client instead — this is how
+  `orderSubmissionService` composes multiple repository calls into one atomic unit. Raw SQL is used
+  only where Prisma's schema/query API can't express it (the `order_number_seq` sequence read via
+  `$queryRaw`).
 - **`middleware/errorHandler.ts`** is the *only* place an error becomes an HTTP status/body.
   Controllers and services never set `ctx.status`/`ctx.body` on failure — they throw a typed
   `AppError` subclass (`domain/errors.ts`, each carrying its own `status` + `code`) and let it
@@ -104,23 +108,29 @@ freshly-read stock, because a prior quote does not reserve inventory.
 
 **Concurrency safety is achieved without explicit locking**, via three independent
 guarded/atomic operations:
-- `warehouseRepository.decrementInventory` — a single `UPDATE ... WHERE stock >= $1` (an
-  affected-row-count of 0 means "insufficient stock", surfaced as `InsufficientStockError`).
-- `order_number_seq` — a Postgres sequence; `nextval()` is atomic under concurrent callers.
+- `warehouseRepository.decrementInventory` — a single `updateMany({ where: { ..., stock: { gte: quantity } } })`
+  (an affected-row-count of 0 means "insufficient stock", surfaced as `InsufficientStockError`).
+- `order_number_seq` — a Postgres sequence; `nextval()` (via `$queryRaw`) is atomic under concurrent
+  callers.
 - `idempotency_keys` — a `PRIMARY KEY` on `key`; a losing concurrent claim raises
-  `IdempotencyKeyConflictError` internally, which `orderSubmissionService` catches and turns into
-  "return the winner's order" rather than an error (both concurrent callers see success).
+  `IdempotencyKeyConflictError` internally (translated from Prisma's `P2002` unique-constraint
+  error), which `orderSubmissionService` catches and turns into "return the winner's order" rather
+  than an error (both concurrent callers see success).
 
 All three failure modes roll back the *entire* transaction (`infrastructure/db/transaction.ts`'s
-`withTransaction`), including any inventory decrements already applied earlier in the same call —
-a failed submission never leaves partial state or a claimed-but-orphaned idempotency key.
+`withTransaction`, a thin wrapper around Prisma's own interactive `$transaction()`), including any
+inventory decrements already applied earlier in the same call — a failed submission never leaves
+partial state or a claimed-but-orphaned idempotency key.
 
-**Database migrations** live in `src/infrastructure/db/migrations/`, one file per version
-(`0001_*.ts`, `0002_*.ts`, ...), each exporting a `{ id, statements }` `Migration`. `migrate.ts`
-tracks applied ids in a `schema_migrations` table and runs each new one inside its own transaction
-— safe to call on every startup and every test reset. **Never edit an already-applied migration**
-(a database that ran it won't re-run it); add a new migration file instead, and append it to
-`migrations/index.ts`.
+**Database migrations** are Prisma Migrate: `prisma/schema.prisma` defines the models,
+`prisma/migrations/` holds the generated SQL history (one folder per migration, tracked by
+Prisma's own `_prisma_migrations` table), and `npx prisma migrate deploy` (run at server startup —
+see `server.ts` — and once in `tests/globalSetup.ts`) applies whatever's new. It's idempotent and
+safe to call on every startup. **Never hand-edit an already-applied migration's `migration.sql`**;
+run `npx prisma migrate dev --name <description>` after changing `schema.prisma` instead, to
+generate a new one. A few things schema.prisma can't express (the `order_number_seq` sequence, and
+`CHECK` constraints) live as hand-added raw SQL at the bottom of the initial migration's
+`migration.sql`.
 
 **Observability** (`observability/`): `logger.ts` is a shared `pino` instance (structured JSON,
 redacts `databaseUrl`/`*.password`). `middleware/requestContext.ts` logs one structured "request
@@ -128,8 +138,10 @@ completed" line per request, using the matched route *pattern* (`ctx.routerPath`
 request path, so the log field stays low-cardinality.
 
 **Graceful shutdown** (`infrastructure/gracefulShutdown.ts`) is a pure, dependency-injected
-function (`createShutdownHandler({ server, closePool, exit, logger, timeoutMs })`) rather than
-inline logic in `server.ts`, specifically so it's unit-testable without a real server/process.
+function (`createShutdownHandler({ server, closePool, exit, logger, timeoutMs })` — `closePool` is
+passed `closePrisma` from `prismaClient.ts` at the `server.ts` call site; the dependency name
+itself stayed generic) rather than inline logic in `server.ts`, specifically so it's unit-testable
+without a real server/process.
 
 ## Testing conventions
 

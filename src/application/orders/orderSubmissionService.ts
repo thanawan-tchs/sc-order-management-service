@@ -1,7 +1,7 @@
 import exception from "@domain/errors";
 import { Order } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
-import { QueryExecutor } from "@infrastructure/db/pool";
+import { QueryExecutor } from "@infrastructure/db/prismaClient";
 import { withTransaction } from "@infrastructure/db/transaction";
 import orderRepository from "@repositories/orderRepository";
 import warehouseRepository from "@repositories/warehouseRepository";

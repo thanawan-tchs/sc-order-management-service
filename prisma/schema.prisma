@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Item {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name     String
+  price    Int
+  currency String
+  weightKg Float  @map("weight_kg")
+
+  inventory Inventory[]
+  orders    Order[]
+
+  @@map("items")
+}
+
+model Warehouse {
+  id        Int    @id @default(autoincrement())
+  name      String
+  latitude  Float
+  longitude Float
+
+  inventory   Inventory[]
+  allocations OrderAllocation[]
+
+  @@map("warehouses")
+}
+
+model Inventory {
+  warehouseId Int    @map("warehouse_id")
+  itemId      String @map("item_id") @db.Uuid
+  stock       Int
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  item      Item      @relation(fields: [itemId], references: [id])
+
+  @@id([warehouseId, itemId])
+  @@map("inventory")
+}
+
+model Order {
+  id                   Int      @id @default(autoincrement())
+  orderNumber          String   @unique @map("order_number")
+  quantity             Int
+  itemId               String   @map("item_id") @db.Uuid
+  itemName             String   @map("item_name")
+  itemPrice            Int      @map("item_price")
+  itemWeightKg         Float    @map("item_weight_kg")
+  destinationLatitude  Float    @map("destination_latitude")
+  destinationLongitude Float    @map("destination_longitude")
+  subtotal             Int
+  discountRate         Float    @map("discount_rate")
+  discount             Int
+  amountAfterDiscount  Int      @map("amount_after_discount")
+  shipping             Int
+  total                Int
+  currency             String
+  status               String
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  item            Item              @relation(fields: [itemId], references: [id])
+  allocations     OrderAllocation[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("orders")
+}
+
+model OrderAllocation {
+  id          Int    @id @default(autoincrement())
+  orderId     Int    @map("order_id")
+  warehouseId Int    @map("warehouse_id")
+  quantity    Int
+  distanceKm  Float  @map("distance_km")
+  shipping    Int
+  currency    String
+
+  order     Order     @relation(fields: [orderId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([orderId])
+  @@map("order_allocations")
+}
+
+model IdempotencyKey {
+  key         String   @id
+  orderNumber String   @map("order_number")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderNumber], references: [orderNumber])
+
+  @@map("idempotency_keys")
+}

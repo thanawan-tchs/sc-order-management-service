@@ -1,24 +1,16 @@
-import { PoolClient } from "pg";
+import { Prisma } from "@generated/prisma/client";
 import { logger } from "@observability/logger";
-import { getPool } from "./pool";
+import { getPrismaClient } from "./prismaClient";
 
 export async function withTransaction<T>(
-  fn: (client: PoolClient) => Promise<T>,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
   operation = "transaction"
 ): Promise<T> {
-  const client = await getPool().connect();
   const start = process.hrtime.bigint();
   try {
-    await client.query("BEGIN");
-    const result = await fn(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
+    return await getPrismaClient().$transaction(fn);
   } finally {
     const durationSeconds = Number(process.hrtime.bigint() - start) / 1e9;
     logger.debug({ operation, duration: Math.round(durationSeconds * 1000) }, "database transaction finished");
-    client.release();
   }
 }

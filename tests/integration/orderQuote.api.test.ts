@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "@app";
-import { closePool } from "@infrastructure/db/pool";
+import { closePrisma } from "@infrastructure/db/prismaClient";
 import warehouseRepository from "@repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 
@@ -14,7 +14,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await closePool();
+  await closePrisma();
 });
 
 describe("POST /v1/orders/quote", () => {

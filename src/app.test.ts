@@ -3,7 +3,7 @@ import request from "supertest";
 import sinon from "sinon";
 import Koa from "koa";
 import { createApp } from "./app";
-import * as poolModule from "./infrastructure/db/pool";
+import * as prismaClientModule from "./infrastructure/db/prismaClient";
 
 describe("app bootstrap", () => {
   it("boots and returns a usable Koa application", () => {
@@ -35,7 +35,7 @@ describe("GET /ready", () => {
   });
 
   it("returns 200 with status ready when the database is reachable", async () => {
-    sinon.stub(poolModule, "getPool").returns({ query: sinon.stub().resolves({ rows: [], rowCount: 0 }) } as never);
+    sinon.stub(prismaClientModule, "getPrismaClient").returns({ $queryRaw: sinon.stub().resolves([]) } as never);
     const app = createApp();
 
     const response = await request(app.callback()).get("/ready");
@@ -45,8 +45,8 @@ describe("GET /ready", () => {
   });
 
   it("returns 503 with status not ready when the database is unreachable", async () => {
-    sinon.stub(poolModule, "getPool").returns({
-      query: sinon.stub().rejects(new Error("connection refused")),
+    sinon.stub(prismaClientModule, "getPrismaClient").returns({
+      $queryRaw: sinon.stub().rejects(new Error("connection refused")),
     } as never);
     const app = createApp();
 

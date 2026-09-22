@@ -26,7 +26,7 @@ Order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 ## Setup
 
 ```bash
-npm install
+npm install         # postinstall runs `prisma generate`
 cp .env.example .env
 npm run db:up      # starts Postgres via docker-compose, on host port 5433
 ```
@@ -41,9 +41,9 @@ npm run db:up      # starts Postgres via docker-compose, on host port 5433
 npm run dev     # start with auto-reload (tsx watch)
 ```
 
-On startup the service runs migrations and seeds the catalog item and 6 warehouses (if the `items`/
-`warehouses` tables are empty) before binding the port. The service listens on `PORT` (default
-`3000`). Verify it's up:
+On startup the service runs `prisma migrate deploy` and seeds the catalog item and 6 warehouses (if
+the `items`/`warehouses` tables are empty) before binding the port. The service listens on `PORT`
+(default `3000`). Verify it's up:
 
 ```bash
 curl http://localhost:3000/health
@@ -68,14 +68,15 @@ npm run coverage         # coverage:unit (c8 + mocha), then coverage:api (vitest
 ```
 
 `test:unit` (mocha + chai + sinon) never touches a real database — every repository/service/
-infrastructure test injects a fake `QueryExecutor` or stubs `getPool`/`pg.Pool` with sinon instead.
+infrastructure test injects a fake `QueryExecutor` or stubs `getPrismaClient` with sinon instead.
 
 `test:api` (vitest) exercises a real Postgres `orders_test` database, but doesn't need
 `npm run db:up`/Docker for it: `tests/globalSetup.ts` boots one automatically via the
 `embedded-postgres` package (a real `postgres` binary run as a plain subprocess) the first time
-`TEST_DATABASE_URL` isn't already set, and shuts it down when the run finishes. Point
-`TEST_DATABASE_URL` at your own Postgres (e.g. the docker-compose one, or CI's service container)
-to use that instead — embedded-postgres only starts when nothing else is already configured.
+`TEST_DATABASE_URL` isn't already set, runs `prisma migrate deploy` against it once, and shuts it
+down when the run finishes. Point `TEST_DATABASE_URL` at your own Postgres (e.g. the docker-compose
+one, or CI's service container) to use that instead — embedded-postgres only starts when nothing
+else is already configured.
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint`, `build`, `test:unit`, and `test:api` (as
 separate steps, for clearer failure visibility) on every push and pull request, against a
@@ -92,9 +93,13 @@ npm run typecheck
 ## Project structure
 
 ```text
+prisma/
+  schema.prisma              # Item/Warehouse/Inventory/Order/OrderAllocation/IdempotencyKey models
+  migrations/                 # prisma migrate history (one folder per migration)
 src/
   app.ts                    # builds the Koa app (no listen()) — importable by tests
-  server.ts                 # runtime entrypoint: migrate -> seed -> listen
+  server.ts                 # runtime entrypoint: prisma migrate deploy -> seed -> listen
+  generated/prisma/           # `prisma generate` output (gitignored, TypeScript source)
   routes/                   # /health (unversioned), /v1/orders/*, /v1/items/* (versioned API)
   controllers/               # one file per controller — parse/validate -> call a service -> map to HTTP
   application/
@@ -104,7 +109,7 @@ src/
   domain/                    # types, validation schemas, errors, pricing/distance/shipping/allocation/validity
   repositories/               # itemRepository, warehouseRepository, orderRepository
   infrastructure/
-    db/                       # pg Pool, schema (DDL), migrate, seed, withTransaction()
+    db/                       # Prisma Client (adapter-pg), seed, withTransaction()
     gracefulShutdown.ts       # SIGTERM/SIGINT handler
   observability/              # logger.ts (pino)
   middleware/                 # errorHandler, validateBody, requestContext
@@ -113,7 +118,7 @@ src/
   **/*.test.ts                # unit/service/repository/middleware tests, co-located next to what they test
 tests/
   integration/                # HTTP-level tests spanning multiple files/whole endpoints
-  helpers/db.ts               # resetTestDb() — migrate + truncate + reseed, used in beforeEach
+  helpers/db.ts               # resetTestDb() — truncate + reseed, used in beforeEach (migrations run once in globalSetup)
   helpers/geo.ts              # places a point at an exact distance from an origin (fixtures)
   setupEnv.ts                 # points DATABASE_URL at the test DB before any test file loads
 ```
@@ -154,14 +159,19 @@ status + error code, ticket 15), `pricing.ts` (subtotal/discount),
 `(warehouseId, itemId)`) and `orderRepository` (ticket 10: persists an already-computed
 `OrderQuote` as an `Order` + its allocations, including a snapshot of the ordered item's
 name/price/weight at submission time, and generates a unique order number). Every function takes
-an optional `executor` (pool or an already-checked-out transaction client) so ticket 11 can run
-several of these calls as one atomic unit.
+an optional `executor: QueryExecutor` (`PrismaClient | Prisma.TransactionClient`) so ticket 11 can
+run several of these calls as one atomic unit. All Postgres access goes through Prisma Client
+(`@prisma/adapter-pg`'s `PrismaPg` driver adapter, wrapping `pg.Pool` under the hood) — no raw SQL
+strings, except the handful of `$queryRaw`/`$executeRawUnsafe` calls Prisma's schema language can't
+express (the `order_number_seq` sequence read, and test-only `TRUNCATE`/`ALTER SEQUENCE`).
 
 **`infrastructure/`**
-- `db/` — pg `Pool` (ticket 17: pool size + timeouts from config), schema (DDL), migrate, seed, and
-  `transaction.ts`'s `withTransaction()` — the `BEGIN`/`COMMIT`/`ROLLBACK` wrapper used by ticket 11.
+- `db/` — `prismaClient.ts` (the shared `PrismaClient` singleton, built with a `PrismaPg` driver
+  adapter from `config`'s pool size/timeouts — ticket 17), `seed.ts`, and `transaction.ts`'s
+  `withTransaction()`, a thin wrapper around Prisma's own interactive `$transaction()` (used by
+  ticket 11; commit/rollback are Prisma's guarantee, not hand-rolled `BEGIN`/`COMMIT`/`ROLLBACK`).
 - `gracefulShutdown.ts` (ticket 17) — dependency-injected `SIGTERM`/`SIGINT` handler (`server.close`
-  → `closePool` → `exit(0)`, or force-exit `1` on timeout) — see `server.ts`.
+  → `closePrisma` → `exit(0)`, or force-exit `1` on timeout) — see `server.ts`.
 
 **`observability/`** (ticket 17) — `logger.ts`, a shared pino instance.
 
@@ -302,7 +312,6 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
 ### TODO: next 
 - relocate validate request body function to stay in controller
 - autogen API Spec
-- apply ORM database
 - integrate test with cucumber
 - cleaning the comment from AI
 - enhance security 

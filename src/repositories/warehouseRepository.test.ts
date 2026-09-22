@@ -3,11 +3,19 @@ import sinon from "sinon";
 import { SEED_WAREHOUSES } from "@config";
 import exception from "@domain/errors";
 import * as redisClientModule from "@infrastructure/cache/redisClient";
-import { QueryExecutor } from "@infrastructure/db/pool";
+import { QueryExecutor } from "@infrastructure/db/prismaClient";
 import warehouseRepository from "./warehouseRepository";
 
-function fakeExecutor(query: sinon.SinonStub): QueryExecutor {
-  return { query } as unknown as QueryExecutor;
+function fakeExecutor(overrides: {
+  findMany?: sinon.SinonStub;
+  findUnique?: sinon.SinonStub;
+  inventoryFindUnique?: sinon.SinonStub;
+  updateMany?: sinon.SinonStub;
+}): QueryExecutor {
+  return {
+    warehouse: { findMany: overrides.findMany, findUnique: overrides.findUnique },
+    inventory: { findUnique: overrides.inventoryFindUnique, updateMany: overrides.updateMany },
+  } as unknown as QueryExecutor;
 }
 
 afterEach(() => {
@@ -19,7 +27,7 @@ const LOS_ANGELES_STOCK = SEED_WAREHOUSES[0].stock;
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";
 const NONEXISTENT_ITEM_ID = "00000000-0000-0000-0000-000000000000";
 
-const WAREHOUSE_ROWS = SEED_WAREHOUSES.map((w, index) => ({
+const WAREHOUSE_RECORDS = SEED_WAREHOUSES.map((w, index) => ({
   id: index + 1,
   name: w.name,
   latitude: w.latitude,
@@ -28,11 +36,11 @@ const WAREHOUSE_ROWS = SEED_WAREHOUSES.map((w, index) => ({
 
 describe("getAllWarehouses", () => {
   it("retrieves and maps every warehouse row", async () => {
-    const query = sinon.stub().resolves({ rows: WAREHOUSE_ROWS, rowCount: WAREHOUSE_ROWS.length });
+    const findMany = sinon.stub().resolves(WAREHOUSE_RECORDS);
 
-    const warehouses = await warehouseRepository.getAllWarehouses(fakeExecutor(query));
+    const warehouses = await warehouseRepository.getAllWarehouses(fakeExecutor({ findMany }));
 
-    expect(query.calledWith("SELECT id, name, latitude, longitude FROM warehouses ORDER BY id")).to.equal(true);
+    expect(findMany.calledWith({ orderBy: { id: "asc" } })).to.equal(true);
     expect(warehouses).to.have.lengthOf(6);
     expect(warehouses.map((w) => w.name).sort()).to.deep.equal([...SEED_WAREHOUSES.map((w) => w.name)].sort());
 
@@ -41,39 +49,33 @@ describe("getAllWarehouses", () => {
   });
 
   it("serves a cache hit without querying the database, when a cache client is configured", async () => {
-    const cached = WAREHOUSE_ROWS.map((row) => ({
-      id: row.id,
-      name: row.name,
-      latitude: row.latitude,
-      longitude: row.longitude,
-    }));
+    const cached = WAREHOUSE_RECORDS.map((record) => ({ ...record }));
     const cacheGet = sinon.stub().resolves(JSON.stringify(cached));
     sinon.stub(redisClientModule, "getRedisClient").returns({ get: cacheGet, set: sinon.stub() } as never);
-    const query = sinon.stub();
+    const findMany = sinon.stub();
 
-    const warehouses = await warehouseRepository.getAllWarehouses(fakeExecutor(query));
+    const warehouses = await warehouseRepository.getAllWarehouses(fakeExecutor({ findMany }));
 
     expect(warehouses).to.deep.equal(cached);
-    expect(query.called).to.equal(false);
+    expect(findMany.called).to.equal(false);
     expect(cacheGet.calledOnceWith("warehouses:all")).to.equal(true);
   });
 });
 
 describe("getWarehouse", () => {
   it("retrieves a single warehouse by id", async () => {
-    const query = sinon.stub().resolves({ rows: [WAREHOUSE_ROWS[0]], rowCount: 1 });
+    const findUnique = sinon.stub().resolves(WAREHOUSE_RECORDS[0]);
 
-    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID, fakeExecutor(query));
+    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID, fakeExecutor({ findUnique }));
 
-    expect(query.calledWith("SELECT id, name, latitude, longitude FROM warehouses WHERE id = $1", [LOS_ANGELES_ID])).to
-      .equal(true);
+    expect(findUnique.calledWith({ where: { id: LOS_ANGELES_ID } })).to.equal(true);
     expect(warehouse?.name).to.equal("Los Angeles");
   });
 
   it("returns undefined for an unknown id", async () => {
-    const query = sinon.stub().resolves({ rows: [], rowCount: 0 });
+    const findUnique = sinon.stub().resolves(null);
 
-    const warehouse = await warehouseRepository.getWarehouse(999, fakeExecutor(query));
+    const warehouse = await warehouseRepository.getWarehouse(999, fakeExecutor({ findUnique }));
 
     expect(warehouse).to.equal(undefined);
   });
@@ -81,9 +83,9 @@ describe("getWarehouse", () => {
   it("writes through to the cache on a miss, when a cache client is configured", async () => {
     const cacheSet = sinon.stub().resolves("OK");
     sinon.stub(redisClientModule, "getRedisClient").returns({ get: sinon.stub().resolves(null), set: cacheSet } as never);
-    const query = sinon.stub().resolves({ rows: [WAREHOUSE_ROWS[0]], rowCount: 1 });
+    const findUnique = sinon.stub().resolves(WAREHOUSE_RECORDS[0]);
 
-    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID, fakeExecutor(query));
+    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID, fakeExecutor({ findUnique }));
 
     expect(warehouse?.name).to.equal("Los Angeles");
     expect(
@@ -93,82 +95,83 @@ describe("getWarehouse", () => {
 });
 
 describe("getInventory", () => {
-  it("returns stock, mapping item_id to the domain field name", async () => {
-    const query = sinon
+  it("returns stock, mapping the compound key to the domain field names", async () => {
+    const inventoryFindUnique = sinon
       .stub()
-      .resolves({ rows: [{ warehouse_id: LOS_ANGELES_ID, item_id: ITEM_ID, stock: LOS_ANGELES_STOCK }], rowCount: 1 });
+      .resolves({ warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: LOS_ANGELES_STOCK });
 
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, ITEM_ID, fakeExecutor(query));
+    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, ITEM_ID, fakeExecutor({ inventoryFindUnique }));
 
     expect(
-      query.calledWith("SELECT warehouse_id, item_id, stock FROM inventory WHERE warehouse_id = $1 AND item_id = $2", [
-        LOS_ANGELES_ID,
-        ITEM_ID,
-      ])
+      inventoryFindUnique.calledWith({ where: { warehouseId_itemId: { warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID } } })
     ).to.equal(true);
     expect(inventory).to.deep.equal({ warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: LOS_ANGELES_STOCK });
   });
 
   it("returns undefined for a warehouse/item pair with no inventory row", async () => {
-    const query = sinon.stub().resolves({ rows: [], rowCount: 0 });
+    const inventoryFindUnique = sinon.stub().resolves(null);
 
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, NONEXISTENT_ITEM_ID, fakeExecutor(query));
+    const inventory = await warehouseRepository.getInventory(
+      LOS_ANGELES_ID,
+      NONEXISTENT_ITEM_ID,
+      fakeExecutor({ inventoryFindUnique })
+    );
 
     expect(inventory).to.equal(undefined);
   });
 });
 
 describe("decrementInventory", () => {
-  it("sends the guarded UPDATE with quantity/warehouseId/itemId, in that parameter order", async () => {
-    const query = sinon.stub().resolves({ rowCount: 1 });
+  it("sends the guarded conditional update with warehouseId/itemId/stock >= quantity", async () => {
+    const updateMany = sinon.stub().resolves({ count: 1 });
 
-    await warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 100, fakeExecutor(query));
+    await warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 100, fakeExecutor({ updateMany }));
 
     expect(
-      query.calledWith(
-        "UPDATE inventory SET stock = stock - $1 WHERE warehouse_id = $2 AND item_id = $3 AND stock >= $1",
-        [100, LOS_ANGELES_ID, ITEM_ID]
-      )
+      updateMany.calledWith({
+        where: { warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: { gte: 100 } },
+        data: { stock: { decrement: 100 } },
+      })
     ).to.equal(true);
   });
 
-  it("throws InsufficientStockError when the guarded UPDATE affects zero rows (insufficient stock)", async () => {
-    const query = sinon.stub().resolves({ rowCount: 0 });
+  it("throws InsufficientStockError when the guarded update affects zero rows (insufficient stock)", async () => {
+    const updateMany = sinon.stub().resolves({ count: 0 });
 
     await expect(
-      warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, LOS_ANGELES_STOCK + 1, fakeExecutor(query))
+      warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, LOS_ANGELES_STOCK + 1, fakeExecutor({ updateMany }))
     ).to.be.rejectedWith(exception.InsufficientStockError);
   });
 
   it("throws InsufficientStockError for a nonexistent warehouse or item (same zero-row-affected signal)", async () => {
-    const query = sinon.stub().resolves({ rowCount: 0 });
+    const updateMany = sinon.stub().resolves({ count: 0 });
 
-    await expect(warehouseRepository.decrementInventory(999, ITEM_ID, 1, fakeExecutor(query))).to.be.rejectedWith(
-      exception.InsufficientStockError
-    );
+    await expect(
+      warehouseRepository.decrementInventory(999, ITEM_ID, 1, fakeExecutor({ updateMany }))
+    ).to.be.rejectedWith(exception.InsufficientStockError);
   });
 
   it("rejects a non-positive or non-integer quantity before ever querying", async () => {
-    const query = sinon.stub().resolves({ rowCount: 1 });
+    const updateMany = sinon.stub().resolves({ count: 1 });
 
-    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 0, fakeExecutor(query))).to.be
-      .rejected;
-    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 1.5, fakeExecutor(query))).to.be
-      .rejected;
-    expect(query.called).to.equal(false);
+    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 0, fakeExecutor({ updateMany }))).to
+      .be.rejected;
+    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 1.5, fakeExecutor({ updateMany })))
+      .to.be.rejected;
+    expect(updateMany.called).to.equal(false);
   });
 
   it("never lets concurrent deductions oversell stock", async () => {
     let stock = 10;
-    const query = sinon.stub().callsFake(async (_sql: string, params: unknown[]) => {
-      const [quantity] = params as [number];
+    const updateMany = sinon.stub().callsFake(async ({ where }: { where: { stock: { gte: number } } }) => {
+      const quantity = where.stock.gte;
       if (stock >= quantity) {
         stock -= quantity;
-        return { rowCount: 1 };
+        return { count: 1 };
       }
-      return { rowCount: 0 };
+      return { count: 0 };
     });
-    const executor = fakeExecutor(query);
+    const executor = fakeExecutor({ updateMany });
 
     const attempts = Array.from({ length: 15 }, () =>
       warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 1, executor)

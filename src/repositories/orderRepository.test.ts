@@ -1,10 +1,10 @@
 import { expect } from "chai";
-import sinon from "sinon";
 import exception from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { OrderQuote } from "@domain/model/order";
-import { QueryExecutor } from "@infrastructure/db/pool";
+import { Prisma } from "@generated/prisma/client";
+import { QueryExecutor } from "@infrastructure/db/prismaClient";
 import orderRepository from "./orderRepository";
 
 const LOS_ANGELES_ID = 1;
@@ -40,115 +40,98 @@ function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
   };
 }
 
+interface FakeOrderAllocation {
+  id: number;
+  orderId: number;
+  warehouseId: number;
+  quantity: number;
+  distanceKm: number;
+  shipping: number;
+  currency: string;
+}
+
+interface OrderCreateData {
+  orderNumber: string;
+  quantity: number;
+  itemId: string;
+  itemName: string;
+  itemPrice: number;
+  itemWeightKg: number;
+  destinationLatitude: number;
+  destinationLongitude: number;
+  subtotal: number;
+  discountRate: number;
+  discount: number;
+  amountAfterDiscount: number;
+  shipping: number;
+  total: number;
+  currency: string;
+  status: string;
+  allocations: { create: Array<Omit<FakeOrderAllocation, "id" | "orderId">> };
+}
+
+type FakeOrderRecord = Omit<OrderCreateData, "allocations"> & {
+  id: number;
+  createdAt: Date;
+  allocations: FakeOrderAllocation[];
+};
+
 function createFakeDb(): QueryExecutor {
   let seq = 0;
   let nextOrderId = 1;
-  const ordersById = new Map<number, Record<string, unknown>>();
+  let nextAllocationId = 1;
+  const ordersById = new Map<number, FakeOrderRecord>();
   const orderIdByNumber = new Map<string, number>();
-  const allocationsByOrderId = new Map<number, Record<string, unknown>[]>();
   const idempotencyKeys = new Map<string, string>();
 
-  const query = sinon.stub().callsFake(async (sql: string, params: unknown[] = []) => {
-    const text = sql.trim();
-
-    if (text.startsWith("SELECT nextval")) {
+  const fakeDb = {
+    $queryRaw: async () => {
       seq += 1;
-      return { rows: [{ seq: String(seq) }], rowCount: 1 };
-    }
+      return [{ seq: BigInt(seq) }];
+    },
+    order: {
+      create: async ({ data }: { data: OrderCreateData }) => {
+        const { allocations, ...orderFields } = data;
+        const id = nextOrderId++;
+        const createdAt = new Date("2024-01-01T00:00:00.000Z");
+        const record = {
+          id,
+          createdAt,
+          ...orderFields,
+          allocations: allocations.create.map((allocation) => ({
+            id: nextAllocationId++,
+            orderId: id,
+            ...allocation,
+          })),
+        };
+        ordersById.set(id, record);
+        orderIdByNumber.set(record.orderNumber, id);
+        return record;
+      },
+      findUnique: async ({ where }: { where: { orderNumber: string } }) => {
+        const id = orderIdByNumber.get(where.orderNumber);
+        return id === undefined ? null : (ordersById.get(id) ?? null);
+      },
+    },
+    idempotencyKey: {
+      findUnique: async ({ where }: { where: { key: string } }) => {
+        const orderNumber = idempotencyKeys.get(where.key);
+        return orderNumber ? { key: where.key, orderNumber } : null;
+      },
+      create: async ({ data }: { data: { key: string; orderNumber: string } }) => {
+        if (idempotencyKeys.has(data.key)) {
+          throw new Prisma.PrismaClientKnownRequestError("duplicate key value violates unique constraint", {
+            code: "P2002",
+            clientVersion: "test",
+          });
+        }
+        idempotencyKeys.set(data.key, data.orderNumber);
+        return data;
+      },
+    },
+  };
 
-    if (text.startsWith("INSERT INTO orders")) {
-      const [
-        orderNumber,
-        quantity,
-        itemId,
-        itemName,
-        itemPrice,
-        itemWeightKg,
-        destLat,
-        destLng,
-        subtotal,
-        discountRate,
-        discount,
-        amountAfterDiscount,
-        shippingCost,
-        total,
-        currency,
-      ] = params;
-      const id = nextOrderId++;
-      const createdAt = new Date("2024-01-01T00:00:00.000Z");
-      ordersById.set(id, {
-        id,
-        order_number: orderNumber,
-        quantity,
-        item_id: itemId,
-        item_name: itemName,
-        item_price: itemPrice,
-        item_weight_kg: itemWeightKg,
-        destination_latitude: destLat,
-        destination_longitude: destLng,
-        subtotal: subtotal,
-        discount_rate: discountRate,
-        discount: discount,
-        amount_after_discount: amountAfterDiscount,
-        shipping: shippingCost,
-        total: total,
-        currency,
-        status: "CONFIRMED",
-        created_at: createdAt,
-      });
-      orderIdByNumber.set(orderNumber as string, id);
-      allocationsByOrderId.set(id, []);
-      return { rows: [{ id, created_at: createdAt }], rowCount: 1 };
-    }
-
-    if (text.startsWith("INSERT INTO order_allocations")) {
-      const [orderId, warehouseId, quantity, distanceKm, shippingCost, currency] = params as [
-        number,
-        ...unknown[]
-      ];
-      allocationsByOrderId.get(orderId)!.push({
-        warehouse_id: warehouseId,
-        quantity,
-        distance_km: distanceKm,
-        shipping: shippingCost,
-        currency,
-      });
-      return { rows: [], rowCount: 1 };
-    }
-
-    if (text.startsWith("SELECT id, order_number")) {
-      const [orderNumber] = params as [string];
-      const id = orderIdByNumber.get(orderNumber);
-      if (id === undefined) return { rows: [], rowCount: 0 };
-      return { rows: [ordersById.get(id)], rowCount: 1 };
-    }
-
-    if (text.startsWith("SELECT warehouse_id, quantity, distance_km")) {
-      const [orderId] = params as [number];
-      return { rows: allocationsByOrderId.get(orderId) ?? [], rowCount: 0 };
-    }
-
-    if (text.startsWith("SELECT order_number FROM idempotency_keys")) {
-      const [key] = params as [string];
-      const orderNumber = idempotencyKeys.get(key);
-      return orderNumber ? { rows: [{ order_number: orderNumber }], rowCount: 1 } : { rows: [], rowCount: 0 };
-    }
-
-    if (text.startsWith("INSERT INTO idempotency_keys")) {
-      const [key, orderNumber] = params as [string, string];
-      if (idempotencyKeys.has(key)) {
-        const conflict = new Error("duplicate key value violates unique constraint") as Error & { code: string };
-        conflict.code = "23505";
-        throw conflict;
-      }
-      idempotencyKeys.set(key, orderNumber);
-      return { rows: [], rowCount: 1 };
-    }
-
-    throw new Error(`fake db: unhandled query ${text}`);
-  });
-
-  return { query } as unknown as QueryExecutor;
+  return fakeDb as unknown as QueryExecutor;
 }
 
 describe("createOrder", () => {

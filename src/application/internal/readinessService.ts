@@ -1,4 +1,4 @@
-import { getPool } from "@infrastructure/db/pool";
+import { getPrismaClient } from "@infrastructure/db/prismaClient";
 
 export interface ReadinessResult {
   ready: boolean;
@@ -11,7 +11,7 @@ export interface ReadinessDependencies {
 
 const defaultDependencies: ReadinessDependencies = {
   checkDatabase: async () => {
-    await getPool().query("SELECT 1");
+    await getPrismaClient().$queryRaw`SELECT 1`;
   },
 };
 

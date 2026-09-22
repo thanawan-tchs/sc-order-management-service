@@ -2,191 +2,131 @@ import exception from "@domain/errors";
 import { Currency, toMoney } from "@domain/money";
 import { Order, OrderQuote, OrderStatus } from "@domain/model/order";
 import { ShippingAllocation } from "@domain/model/shipping";
-import { QueryExecutor, getPool } from "@infrastructure/db/pool";
+import {
+  Order as OrderRecord,
+  OrderAllocation as OrderAllocationRecord,
+  Prisma,
+} from "@generated/prisma/client";
+import { QueryExecutor, getPrismaClient } from "@infrastructure/db/prismaClient";
 
-const POSTGRES_UNIQUE_VIOLATION = "23505";
+const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
 function isUniqueViolation(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: string }).code === POSTGRES_UNIQUE_VIOLATION;
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === PRISMA_UNIQUE_CONSTRAINT_VIOLATION;
 }
 
-interface OrderRow {
-  id: number;
-  order_number: string;
-  quantity: number;
-  item_id: string;
-  item_name: string;
-  item_price: number;
-  item_weight_kg: number;
-  destination_latitude: number;
-  destination_longitude: number;
-  subtotal: number;
-  discount_rate: number;
-  discount: number;
-  amount_after_discount: number;
-  shipping: number;
-  total: number;
-  currency: Currency;
-  status: OrderStatus;
-  created_at: Date;
-}
+type OrderWithAllocations = OrderRecord & { allocations: OrderAllocationRecord[] };
 
-interface AllocationRow {
-  warehouse_id: number;
-  quantity: number;
-  distance_km: number;
-  shipping: number;
-  currency: Currency;
-}
-
-function mapAllocationRow(row: AllocationRow): ShippingAllocation {
+function mapAllocation(record: OrderAllocationRecord): ShippingAllocation {
   return {
-    warehouseId: row.warehouse_id,
-    quantity: row.quantity,
-    distanceKm: row.distance_km,
-    shippingCost: toMoney(row.shipping),
-    currency: row.currency,
+    warehouseId: record.warehouseId,
+    quantity: record.quantity,
+    distanceKm: record.distanceKm,
+    shippingCost: toMoney(record.shipping),
+    currency: record.currency as Currency,
   };
 }
 
-function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
+function mapOrder(record: OrderWithAllocations): Order {
   return {
-    quantity: row.quantity,
+    quantity: record.quantity,
     item: {
-      id: row.item_id,
-      name: row.item_name,
-      price: toMoney(row.item_price),
-      currency: row.currency,
-      weightKg: row.item_weight_kg,
+      id: record.itemId,
+      name: record.itemName,
+      price: toMoney(record.itemPrice),
+      currency: record.currency as Currency,
+      weightKg: record.itemWeightKg,
     },
-    shippingAddress: { latitude: row.destination_latitude, longitude: row.destination_longitude },
-    subtotal: toMoney(row.subtotal),
-    discountRate: row.discount_rate,
-    discount: toMoney(row.discount),
-    amountAfterDiscount: toMoney(row.amount_after_discount),
-    totalWeightKg: row.quantity * row.item_weight_kg,
-    shippingCost: toMoney(row.shipping),
-    total: toMoney(row.total),
-    currency: row.currency,
+    shippingAddress: { latitude: record.destinationLatitude, longitude: record.destinationLongitude },
+    subtotal: toMoney(record.subtotal),
+    discountRate: record.discountRate,
+    discount: toMoney(record.discount),
+    amountAfterDiscount: toMoney(record.amountAfterDiscount),
+    totalWeightKg: record.quantity * record.itemWeightKg,
+    shippingCost: toMoney(record.shipping),
+    total: toMoney(record.total),
+    currency: record.currency as Currency,
     valid: true,
     invalidReasons: [],
-    allocations,
-    orderNumber: row.order_number,
-    status: row.status,
-    createdAt: row.created_at.toISOString(),
+    allocations: record.allocations.map(mapAllocation),
+    orderNumber: record.orderNumber,
+    status: record.status as OrderStatus,
+    createdAt: record.createdAt.toISOString(),
   };
 }
 
 async function generateOrderNumber(executor: QueryExecutor): Promise<string> {
-  const { rows } = await executor.query<{ seq: string }>("SELECT nextval('order_number_seq') AS seq");
-  return `ORD-${rows[0].seq.padStart(7, "0")}`;
+  const rows = await executor.$queryRaw<{ seq: bigint }[]>`SELECT nextval('order_number_seq') AS seq`;
+  return `ORD-${rows[0].seq.toString().padStart(7, "0")}`;
 }
 
 const INITIAL_ORDER_STATUS: OrderStatus = "CONFIRMED";
 
-export async function createOrder(quote: OrderQuote, executor: QueryExecutor = getPool()): Promise<Order> {
+export async function createOrder(quote: OrderQuote, executor: QueryExecutor = getPrismaClient()): Promise<Order> {
   const orderNumber = await generateOrderNumber(executor);
 
-  const { rows } = await executor.query<{ id: number; created_at: Date }>(
-    `INSERT INTO orders (
-       order_number, quantity, item_id, item_name, item_price, item_weight_kg,
-       destination_latitude, destination_longitude,
-       subtotal, discount_rate, discount, amount_after_discount,
-       shipping, total, currency, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-     RETURNING id, created_at`,
-    [
+  const record = await executor.order.create({
+    data: {
       orderNumber,
-      quote.quantity,
-      quote.item.id,
-      quote.item.name,
-      quote.item.price,
-      quote.item.weightKg,
-      quote.shippingAddress.latitude,
-      quote.shippingAddress.longitude,
-      quote.subtotal,
-      quote.discountRate,
-      quote.discount,
-      quote.amountAfterDiscount,
-      quote.shippingCost,
-      quote.total,
-      quote.currency,
-      INITIAL_ORDER_STATUS,
-    ]
-  );
-  const { id: orderId, created_at: createdAt } = rows[0];
+      quantity: quote.quantity,
+      itemId: quote.item.id,
+      itemName: quote.item.name,
+      itemPrice: quote.item.price,
+      itemWeightKg: quote.item.weightKg,
+      destinationLatitude: quote.shippingAddress.latitude,
+      destinationLongitude: quote.shippingAddress.longitude,
+      subtotal: quote.subtotal,
+      discountRate: quote.discountRate,
+      discount: quote.discount,
+      amountAfterDiscount: quote.amountAfterDiscount,
+      shipping: quote.shippingCost,
+      total: quote.total,
+      currency: quote.currency,
+      status: INITIAL_ORDER_STATUS,
+      allocations: {
+        create: quote.allocations.map((allocation) => ({
+          warehouseId: allocation.warehouseId,
+          quantity: allocation.quantity,
+          distanceKm: allocation.distanceKm,
+          shipping: allocation.shippingCost,
+          currency: allocation.currency,
+        })),
+      },
+    },
+    include: { allocations: { orderBy: { id: "asc" } } },
+  });
 
-  for (const allocation of quote.allocations) {
-    await executor.query(
-      `INSERT INTO order_allocations (order_id, warehouse_id, quantity, distance_km, shipping, currency)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        orderId,
-        allocation.warehouseId,
-        allocation.quantity,
-        allocation.distanceKm,
-        allocation.shippingCost,
-        allocation.currency,
-      ]
-    );
-  }
-
-  return {
-    ...quote,
-    orderNumber,
-    status: INITIAL_ORDER_STATUS,
-    createdAt: createdAt.toISOString(),
-  };
+  return mapOrder(record);
 }
 
 export async function getOrderByNumber(
   orderNumber: string,
-  executor: QueryExecutor = getPool()
+  executor: QueryExecutor = getPrismaClient()
 ): Promise<Order | undefined> {
-  const { rows } = await executor.query<OrderRow>(
-    `SELECT id, order_number, quantity, item_id, item_name, item_price, item_weight_kg,
-            destination_latitude, destination_longitude,
-            subtotal, discount_rate, discount, amount_after_discount,
-            shipping, total, currency, status, created_at
-     FROM orders WHERE order_number = $1`,
-    [orderNumber]
-  );
-  const orderRow = rows[0];
-  if (!orderRow) return undefined;
-
-  const { rows: allocationRows } = await executor.query<AllocationRow>(
-    `SELECT warehouse_id, quantity, distance_km, shipping, currency
-     FROM order_allocations WHERE order_id = $1 ORDER BY id`,
-    [orderRow.id]
-  );
-
-  return mapOrderRow(orderRow, allocationRows.map(mapAllocationRow));
+  const record = await executor.order.findUnique({
+    where: { orderNumber },
+    include: { allocations: { orderBy: { id: "asc" } } },
+  });
+  return record ? mapOrder(record) : undefined;
 }
 
 export async function findOrderByIdempotencyKey(
   idempotencyKey: string,
-  executor: QueryExecutor = getPool()
+  executor: QueryExecutor = getPrismaClient()
 ): Promise<Order | undefined> {
-  const { rows } = await executor.query<{ order_number: string }>(
-    "SELECT order_number FROM idempotency_keys WHERE key = $1",
-    [idempotencyKey]
-  );
-  const row = rows[0];
-  if (!row) return undefined;
+  const record = await executor.idempotencyKey.findUnique({ where: { key: idempotencyKey } });
+  if (!record) return undefined;
 
-  return getOrderByNumber(row.order_number, executor);
+  return getOrderByNumber(record.orderNumber, executor);
 }
 
 export async function recordIdempotencyKey(
   idempotencyKey: string,
   orderNumber: string,
-  executor: QueryExecutor = getPool()
+  executor: QueryExecutor = getPrismaClient()
 ): Promise<void> {
   try {
-    await executor.query("INSERT INTO idempotency_keys (key, order_number) VALUES ($1, $2)", [
-      idempotencyKey,
-      orderNumber,
-    ]);
+    await executor.idempotencyKey.create({ data: { key: idempotencyKey, orderNumber } });
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new exception.IdempotencyKeyConflictError(idempotencyKey);

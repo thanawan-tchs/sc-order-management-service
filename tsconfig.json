@@ -31,7 +31,8 @@
       "@observability/*": ["./src/observability/*"],
       "@routes/*": ["./src/routes/*"],
       "@utils/*": ["./src/utils/*"],
-      "@tests/*": ["./tests/*"]
+      "@tests/*": ["./tests/*"],
+      "@generated/*": ["./src/generated/*"]
     }
   },
   "include": ["src", "tests"],

@@ -1,34 +1,30 @@
 import { config } from "@config";
 import { Currency, Money, toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
-import { QueryExecutor, getPool } from "@infrastructure/db/pool";
+import { Item as ItemRecord } from "@generated/prisma/client";
+import { QueryExecutor, getPrismaClient } from "@infrastructure/db/prismaClient";
 import { readThrough } from "@infrastructure/cache/cache";
 
-interface ItemRow {
-  id: string;
-  name: string;
-  price: number;
-  currency: Currency;
-  weight_kg: number;
+function mapItem(record: ItemRecord): Item {
+  return {
+    id: record.id,
+    name: record.name,
+    price: toMoney(record.price),
+    currency: record.currency as Currency,
+    weightKg: record.weightKg,
+  };
 }
 
-function mapItemRow(row: ItemRow): Item {
-  return { id: row.id, name: row.name, price: toMoney(row.price), currency: row.currency, weightKg: row.weight_kg };
-}
-
-export async function getItem(id: string, executor: QueryExecutor = getPool()): Promise<Item | undefined> {
+export async function getItem(id: string, executor: QueryExecutor = getPrismaClient()): Promise<Item | undefined> {
   return readThrough(`item:${id}`, config.cacheTtlSeconds, async () => {
-    const { rows } = await executor.query<ItemRow>(
-      "SELECT id, name, price, currency, weight_kg FROM items WHERE id = $1",
-      [id]
-    );
-    return rows[0] ? mapItemRow(rows[0]) : undefined;
+    const record = await executor.item.findUnique({ where: { id } });
+    return record ? mapItem(record) : undefined;
   });
 }
 
-export async function getAllItems(executor: QueryExecutor = getPool()): Promise<Item[]> {
-  const { rows } = await executor.query<ItemRow>("SELECT id, name, price, currency, weight_kg FROM items ORDER BY id");
-  return rows.map(mapItemRow);
+export async function getAllItems(executor: QueryExecutor = getPrismaClient()): Promise<Item[]> {
+  const records = await executor.item.findMany({ orderBy: { id: "asc" } });
+  return records.map(mapItem);
 }
 
 export interface CreateItemInput {
@@ -38,15 +34,11 @@ export interface CreateItemInput {
   weightKg: number;
 }
 
-export async function createItem(
-  input: CreateItemInput,
-  executor: QueryExecutor = getPool()
-): Promise<Item> {
-  const { rows } = await executor.query<ItemRow>(
-    "INSERT INTO items (name, price, currency, weight_kg) VALUES ($1, $2, $3, $4) RETURNING id, name, price, currency, weight_kg",
-    [input.name, input.price, input.currency, input.weightKg]
-  );
-  return mapItemRow(rows[0]);
+export async function createItem(input: CreateItemInput, executor: QueryExecutor = getPrismaClient()): Promise<Item> {
+  const record = await executor.item.create({
+    data: { name: input.name, price: input.price, currency: input.currency, weightKg: input.weightKg },
+  });
+  return mapItem(record);
 }
 
 export default { getItem, getAllItems, createItem };

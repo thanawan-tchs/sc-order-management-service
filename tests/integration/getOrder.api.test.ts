@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "@app";
-import { closePool, getPool } from "@infrastructure/db/pool";
+import { closePrisma, getPrismaClient } from "@infrastructure/db/prismaClient";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
 
@@ -19,26 +19,15 @@ async function repositionWarehouse(
   stock: number
 ): Promise<void> {
   const { latitude, longitude } = pointAtDistanceFrom(origin, distanceKm);
-  const pool = getPool();
-  await pool.query("UPDATE warehouses SET latitude = $1, longitude = $2 WHERE id = $3", [
-    latitude,
-    longitude,
-    id,
-  ]);
-  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2 AND item_id = $3", [
-    stock,
-    id,
-    itemId,
-  ]);
+  const prisma = getPrismaClient();
+  await prisma.warehouse.update({ where: { id }, data: { latitude, longitude } });
+  await prisma.inventory.update({ where: { warehouseId_itemId: { warehouseId: id, itemId } }, data: { stock } });
 }
 
 async function zeroOutStock(ids: number[]): Promise<void> {
-  const pool = getPool();
+  const prisma = getPrismaClient();
   for (const id of ids) {
-    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1 AND item_id = $2", [
-      id,
-      itemId,
-    ]);
+    await prisma.inventory.update({ where: { warehouseId_itemId: { warehouseId: id, itemId } }, data: { stock: 0 } });
   }
 }
 
@@ -47,7 +36,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await closePool();
+  await closePrisma();
 });
 
 describe("GET /v1/orders/:orderNumber", () => {
@@ -119,10 +108,10 @@ describe("GET /v1/orders/:orderNumber", () => {
       .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     expect(submitResponse.status).toBe(201);
 
-    await getPool().query(
-      "UPDATE orders SET discount_rate = $1, discount = $2, amount_after_discount = $3 WHERE order_number = $4",
-      [0.42, 63000, 87000, submitResponse.body.orderNumber]
-    );
+    await getPrismaClient().order.update({
+      where: { orderNumber: submitResponse.body.orderNumber },
+      data: { discountRate: 0.42, discount: 63000, amountAfterDiscount: 87000 },
+    });
 
     const response = await request(app.callback()).get(
       `/v1/orders/${submitResponse.body.orderNumber}`

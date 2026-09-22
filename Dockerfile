@@ -3,7 +3,8 @@
 # --- deps: install once, reused by both the build and the production stage --------------------
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json prisma7.config.ts ./
+COPY prisma ./prisma
 RUN npm ci
 
 # --- build: compile TypeScript -> dist/ ---------------------------------------------------------
@@ -18,7 +19,8 @@ FROM node:20-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json prisma7.config.ts ./
+COPY prisma ./prisma
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 

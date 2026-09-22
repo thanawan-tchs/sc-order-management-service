@@ -1,18 +1,24 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createApp } from "./app";
 import { config } from "./config";
 import { closeRedisClient, connectRedisClient } from "./infrastructure/cache/redisClient";
-import { closePool, connectPool } from "./infrastructure/db/pool";
-import { migrate } from "./infrastructure/db/migrate";
+import { closePrisma, connectPrisma } from "./infrastructure/db/prismaClient";
 import { seed } from "./infrastructure/db/seed";
 import { createShutdownHandler } from "./infrastructure/gracefulShutdown";
 import { logger } from "./observability/logger";
 
+const execFileAsync = promisify(execFile);
+
+async function migrate(): Promise<void> {
+  await execFileAsync("npx", ["prisma", "migrate", "deploy"], { env: process.env });
+}
+
 async function main(): Promise<void> {
-  await connectPool();
+  await migrate();
+  await connectPrisma();
   await connectRedisClient();
 
-  // TODO: fix me 
-  await migrate();
   await seed();
 
   const app = createApp();
@@ -25,7 +31,7 @@ async function main(): Promise<void> {
 
   const shutdown = createShutdownHandler({
     server,
-    closePool,
+    closePool: closePrisma,
     closeCache: closeRedisClient,
     exit: (code) => process.exit(code),
     logger,

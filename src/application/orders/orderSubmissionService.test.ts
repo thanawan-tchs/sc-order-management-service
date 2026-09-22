@@ -5,7 +5,7 @@ import exception, { OrderSubmissionError } from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { Order } from "@domain/model/order";
-import * as poolModule from "@infrastructure/db/pool";
+import * as prismaClientModule from "@infrastructure/db/prismaClient";
 import itemRepository from "@repositories/itemRepository";
 import orderRepository from "@repositories/orderRepository";
 import warehouseRepository from "@repositories/warehouseRepository";
@@ -48,35 +48,34 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
 }
 
 function stubPool(): void {
-  sinon.stub(poolModule, "getPool").returns({
-    connect: async () => ({ query: sinon.stub().resolves({ rows: [], rowCount: 0 }), release: sinon.stub() }),
+  sinon.stub(prismaClientModule, "getPrismaClient").returns({
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
   } as never);
 }
 
 interface TransactionalClient {
-  query: sinon.SinonStub;
-  release: sinon.SinonStub;
   onCommit(fn: () => void): void;
   onSettle(fn: () => void): void;
 }
 
 function stubTransactionalPool(): void {
-  sinon.stub(poolModule, "getPool").returns({
-    connect: async () => {
+  sinon.stub(prismaClientModule, "getPrismaClient").returns({
+    $transaction: async (fn: (tx: TransactionalClient) => Promise<unknown>) => {
       const onCommitCallbacks: Array<() => void> = [];
       const onSettleCallbacks: Array<() => void> = [];
       const client: TransactionalClient = {
-        query: sinon.stub().callsFake(async (sql: string) => {
-          const text = sql.trim();
-          if (text === "COMMIT") onCommitCallbacks.forEach((fn) => fn());
-          if (text === "COMMIT" || text === "ROLLBACK") onSettleCallbacks.forEach((fn) => fn());
-          return { rows: [], rowCount: 0 };
-        }),
-        release: sinon.stub(),
         onCommit: (fn) => onCommitCallbacks.push(fn),
         onSettle: (fn) => onSettleCallbacks.push(fn),
       };
-      return client;
+      try {
+        const result = await fn(client);
+        onCommitCallbacks.forEach((fn) => fn());
+        onSettleCallbacks.forEach((fn) => fn());
+        return result;
+      } catch (error) {
+        onSettleCallbacks.forEach((fn) => fn());
+        throw error;
+      }
     },
   } as never);
 }

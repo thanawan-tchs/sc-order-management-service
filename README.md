@@ -69,8 +69,13 @@ npm run coverage         # coverage:unit (c8 + mocha), then coverage:api (vitest
 
 `test:unit` (mocha + chai + sinon) never touches a real database — every repository/service/
 infrastructure test injects a fake `QueryExecutor` or stubs `getPool`/`pg.Pool` with sinon instead.
-Only `test:api` (vitest) exercises the real `orders_test` database, so `npm run db:up` only needs
-to be running before that one.
+
+`test:api` (vitest) exercises a real Postgres `orders_test` database, but doesn't need
+`npm run db:up`/Docker for it: `tests/globalSetup.ts` boots one automatically via the
+`embedded-postgres` package (a real `postgres` binary run as a plain subprocess) the first time
+`TEST_DATABASE_URL` isn't already set, and shuts it down when the run finishes. Point
+`TEST_DATABASE_URL` at your own Postgres (e.g. the docker-compose one, or CI's service container)
+to use that instead — embedded-postgres only starts when nothing else is already configured.
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint`, `build`, `test:unit`, and `test:api` (as
 separate steps, for clearer failure visibility) on every push and pull request, against a

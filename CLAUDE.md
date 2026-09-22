@@ -24,7 +24,7 @@ npm run dev             # dev server with auto-reload (tsx watch)
 npm run build            # tsc -p tsconfig.build.json -> dist/
 npm start                 # node dist/server.js
 
-npm test                  # test:unit then test:api (test:api requires npm run db:up first)
+npm test                  # test:unit then test:api (test:api auto-provisions its own Postgres — see below)
 npm run test:unit          # mocha                    — co-located unit/service/repository/middleware tests
 npm run test:api            # vitest run tests/integration — full HTTP integration tests
 npm run test:watch          # mocha --watch (unit tests only)
@@ -43,10 +43,14 @@ repository/service/infrastructure test injects a fake `QueryExecutor` (or stubs 
 directly via sinon) rather than hitting Postgres; see `.mocharc.json` (loader: `ts-node/register`
 — NOT `tsx`, whose esbuild-based CJS output makes exports non-configurable and unstubbable by
 sinon) and `tests/mochaSetup.ts` (registers `chai-as-promised`). **Only `test:api` (vitest,
-`tests/integration/`) hits the real Postgres `orders_test` database**; `npm run db:up` must be
-running first for that suite. CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint`, `build`,
-`test:unit`, `test:api` as separate steps, with a `postgres:16-alpine` service container available
-for `test:api`.
+`tests/integration/`) hits a real Postgres `orders_test` database.** It no longer requires
+`npm run db:up`/Docker: `vitest.config.ts`'s `globalSetup` (`tests/globalSetup.ts`) boots a real
+Postgres via the `embedded-postgres` package — an actual `postgres` binary run as a plain
+subprocess, not a container — the first time `TEST_DATABASE_URL` isn't already set, and tears it
+down after the run. If `TEST_DATABASE_URL` *is* already set (as CI's `postgres:16-alpine` service
+container does — see `.github/workflows/ci.yml`), that's used instead and embedded-postgres never
+starts. `npm run db:up`'s docker-compose Postgres still exists for local `npm run dev` against
+persistent dev data; it's just no longer on the critical path for `test:api`.
 
 ## Architecture
 

@@ -3,7 +3,6 @@ import Koa, { Context } from "koa";
 import Router from "@koa/router";
 import request from "supertest";
 import { logger } from "../observability/logger";
-import { registry } from "../observability/metrics";
 import { errorHandler } from "./errorHandler";
 import { requestContext } from "./requestContext";
 
@@ -131,19 +130,5 @@ describe("requestContext middleware", () => {
     // errorHandler's own "unhandled error" line, plus requestContext's "request completed" line.
     expect(errorFn).toHaveBeenCalledTimes(2);
     expect(errorFn.mock.calls.some(([, message]) => message === "request completed")).toBe(true);
-  });
-
-  it("records http_requests_total and http_request_duration_seconds with method/route/status labels", async () => {
-    registry.resetMetrics();
-    const app = buildApp((ctx) => {
-      ctx.status = 200;
-    });
-
-    await request(app.callback()).get("/test/999");
-
-    const counter = await registry.getSingleMetric("http_requests_total")?.get();
-    const sample = counter?.values.find((v) => v.labels.route === "/test/:id" && v.labels.method === "GET");
-    expect(sample?.labels).toMatchObject({ method: "GET", route: "/test/:id", status: "200" });
-    expect(sample?.value).toBeGreaterThanOrEqual(1);
   });
 });

@@ -2,7 +2,6 @@ import { Context } from "koa";
 import { getOrderQuote } from "../application/orderQuoteService";
 import { OrderQuote } from "../domain/types";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
-import { quoteRequestsTotal } from "../observability/metrics";
 
 interface QuoteResponseBody {
   valid: boolean;
@@ -75,7 +74,6 @@ function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
  * format. No pricing or allocation logic belongs here.
  */
 export async function quoteOrder(ctx: Context): Promise<void> {
-  quoteRequestsTotal.inc();
   const input = ctx.state.validated as OrderRequestInput;
   const quote = await getOrderQuote(input);
 

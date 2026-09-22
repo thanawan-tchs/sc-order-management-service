@@ -1,7 +1,6 @@
 import { randomUUID } from "crypto";
 import { Context, Next } from "koa";
 import { logger } from "../observability/logger";
-import { httpRequestDurationSeconds, httpRequestsTotal } from "../observability/metrics";
 
 const REQUEST_ID_HEADER = "X-Request-Id";
 
@@ -9,9 +8,9 @@ const REQUEST_ID_HEADER = "X-Request-Id";
  * `@koa/router` stamps the matched route *pattern* (e.g. "/v1/orders/:orderNumber", not the
  * literal path) onto the context at runtime, but doesn't type it — read it defensively, with the
  * literal path as a fallback so an unmatched request (a 404 for a route that doesn't exist at
- * all) still gets a label instead of `undefined`. Using the pattern, not the literal path, is
- * what keeps `route` a low-cardinality metrics label (one series per endpoint, not one per order
- * number).
+ * all) still gets a value instead of `undefined`. Using the pattern, not the literal path, keeps
+ * the log line's `operation` field low-cardinality (one distinct value per endpoint, not one per
+ * order number).
  */
 function getRoutePattern(ctx: Context): string {
   const withRouterPath = ctx as unknown as { routerPath?: string; _matchedRoute?: string };
@@ -32,8 +31,7 @@ function getRoutePattern(ctx: Context): string {
  *
  * Logs exactly one structured line per request, on completion: requestId, operation
  * (`METHOD /route/pattern`), duration, status, and — when a controller set them —
- * `orderNumber` and the error `code`. Also records the two HTTP-level metrics
- * (`http_requests_total`, `http_request_duration_seconds`).
+ * `orderNumber` and the error `code`.
  */
 export async function requestContext(ctx: Context, next: Next): Promise<void> {
   const requestId = ctx.get(REQUEST_ID_HEADER) || randomUUID();
@@ -47,10 +45,6 @@ export async function requestContext(ctx: Context, next: Next): Promise<void> {
   } finally {
     const durationSeconds = Number(process.hrtime.bigint() - start) / 1e9;
     const route = getRoutePattern(ctx);
-    const status = String(ctx.status);
-
-    httpRequestsTotal.inc({ method: ctx.method, route, status });
-    httpRequestDurationSeconds.observe({ method: ctx.method, route, status }, durationSeconds);
 
     const errorCode = ctx.state.errorCode as string | undefined;
     const orderNumber = ctx.state.orderNumber as string | undefined;

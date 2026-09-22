@@ -50,30 +50,6 @@ curl http://localhost:3000/health
 # {"status":"ok"}
 ```
 
-## Metrics (Prometheus)
-
-The app exposes Prometheus metrics at `GET /metrics` (see `src/observability/metrics.ts`). To see
-them scraped and graphed locally:
-
-```bash
-npm run metrics:up          # starts Prometheus on http://localhost:9090
-npm run dev                 # the app must be running for there to be anything to scrape
-```
-
-Prometheus scrapes every 5s (`docker/prometheus.yml`). Send some requests, then open
-<http://localhost:9090> → **Status → Targets** (should show `host` as UP; the `container` target is
-only UP if you run the app via `docker compose up --build app` instead) and try queries in the
-**Graph** tab:
-
-```promql
-http_requests_total                                    # every request, by method/route/status
-sum by (route, status) (rate(http_requests_total[1m])) # requests per second, per route
-histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))  # p95 latency
-orders_successful_total                                # orders persisted
-sum by (reason) (orders_rejected_total)                # 422 rejections, by business reason
-inventory_conflicts_total                              # 409s: lost a live race for stock
-```
-
 ## Build & run compiled output
 
 ```bash
@@ -120,7 +96,7 @@ src/
   infrastructure/
     db/                       # pg Pool, schema (DDL), migrate, seed, withTransaction()
     gracefulShutdown.ts       # SIGTERM/SIGINT handler
-  observability/              # logger.ts (pino), metrics.ts (prom-client)
+  observability/              # logger.ts (pino)
   middleware/                 # errorHandler, validateBody, requestContext
   config/                     # environment/config loading, seed data
   utils/                      # (empty — shared helpers as needed)
@@ -168,13 +144,11 @@ several of these calls as one atomic unit.
 
 **`infrastructure/`**
 - `db/` — pg `Pool` (ticket 17: pool size + timeouts from config), schema (DDL), migrate, seed, and
-  `transaction.ts`'s `withTransaction()` — the `BEGIN`/`COMMIT`/`ROLLBACK` wrapper used by ticket
-  11, now also recording `transaction_outcomes_total` / `database_operation_duration_seconds`.
+  `transaction.ts`'s `withTransaction()` — the `BEGIN`/`COMMIT`/`ROLLBACK` wrapper used by ticket 11.
 - `gracefulShutdown.ts` (ticket 17) — dependency-injected `SIGTERM`/`SIGINT` handler (`server.close`
   → `closePool` → `exit(0)`, or force-exit `1` on timeout) — see `server.ts`.
 
-**`observability/`** (ticket 17) — `logger.ts` (pino instance) and `metrics.ts` (prom-client
-registry + metric definitions).
+**`observability/`** (ticket 17) — `logger.ts`, a shared pino instance.
 
 **`middleware/`**
 - `errorHandler` (ticket 15) — the ONLY place an error becomes an HTTP response; registered first
@@ -182,8 +156,8 @@ registry + metric definitions).
 - `validateBody` — throws a typed `ValidationError` on a bad request body rather than shaping a
   response itself, same as every other layer.
 - `requestContext` (ticket 17) — assigns/echoes `X-Request-Id`, attaches a per-request child logger
-  to `ctx.state.log`, and records HTTP metrics; wraps `errorHandler` so it observes the final
-  post-error-handling status.
+  to `ctx.state.log`, and logs one structured completion line per request; wraps `errorHandler` so
+  it observes the final post-error-handling status.
 
 ### API
 

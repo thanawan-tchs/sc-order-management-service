@@ -109,9 +109,9 @@ tracks applied ids in a `schema_migrations` table and runs each new one inside i
 `migrations/index.ts`.
 
 **Observability** (`observability/`): `logger.ts` is a shared `pino` instance (structured JSON,
-redacts `databaseUrl`/`*.password`); `metrics.ts` holds the `prom-client` registry and all metric
-definitions, scraped at `GET /metrics`. Prometheus route labels use the matched route *pattern*
-(`ctx.routerPath`), not the literal request path, to keep label cardinality bounded.
+redacts `databaseUrl`/`*.password`). `middleware/requestContext.ts` logs one structured "request
+completed" line per request, using the matched route *pattern* (`ctx.routerPath`), not the literal
+request path, so the log field stays low-cardinality.
 
 **Graceful shutdown** (`infrastructure/gracefulShutdown.ts`) is a pure, dependency-injected
 function (`createShutdownHandler({ server, closePool, exit, logger, timeoutMs })`) rather than

@@ -33,17 +33,5 @@ services:
       db:
         condition: service_healthy
 
-  # Scrapes the app's GET /metrics (see observability/metrics.ts) so the metrics can be queried
-  # and graphed at http://localhost:9090. Independent of `app`/`db` — start with `npm run metrics:up`.
-  # Whichever of the two targets in docker/prometheus.yml isn't running just shows as DOWN.
-  prometheus:
-    image: prom/prometheus:v2.55.1
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
 volumes:
   pgdata:

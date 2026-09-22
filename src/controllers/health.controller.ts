@@ -1,6 +1,5 @@
 import { Context } from "koa";
 import { checkReadiness } from "../application/readinessService";
-import { registry } from "../observability/metrics";
 
 /**
  * Liveness check. Deliberately trivial — no business logic belongs in a route handler,
@@ -27,11 +26,4 @@ export async function getReadiness(ctx: Context): Promise<void> {
 
   ctx.status = 503;
   ctx.body = { status: "not ready", reason: result.reason };
-}
-
-/** Prometheus scrape endpoint (ticket 17) — see observability/metrics.ts for what's registered. */
-export async function getMetrics(ctx: Context): Promise<void> {
-  ctx.status = 200;
-  ctx.type = registry.contentType;
-  ctx.body = await registry.metrics();
 }

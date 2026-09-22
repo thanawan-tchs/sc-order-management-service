@@ -9,6 +9,12 @@ function getRoutePattern(ctx: Context): string {
   return withRouterPath.routerPath ?? withRouterPath._matchedRoute ?? ctx.path;
 }
 
+function isEmptyObject(value: unknown): boolean {
+  return (
+    typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0
+  );
+}
+
 export async function requestContext(ctx: Context, next: Next): Promise<void> {
   const requestId = ctx.get(REQUEST_ID_HEADER) || randomUUID();
   ctx.state.requestId = requestId;
@@ -25,11 +31,19 @@ export async function requestContext(ctx: Context, next: Next): Promise<void> {
     const errorCode = ctx.state.errorCode as string | undefined;
     const orderNumber = ctx.state.orderNumber as string | undefined;
     const level = ctx.status >= 500 ? "error" : "info";
+    const requestBody = ctx.request.body;
+    const responseBody = ctx.body;
     ctx.state.log[level](
       {
         operation: `${ctx.method} ${route}`,
         duration: Math.round(durationSeconds * 1000),
         status: ctx.status,
+        ip: ctx.ip,
+        userAgent: ctx.get("User-Agent") || undefined,
+        requestContentLength: ctx.request.length,
+        responseContentLength: ctx.length,
+        ...(isEmptyObject(requestBody) ? {} : { requestBody }),
+        ...(responseBody === undefined ? {} : { responseBody }),
         ...(orderNumber ? { orderNumber } : {}),
         ...(errorCode ? { errorCode } : {}),
       },

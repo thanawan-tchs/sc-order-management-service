@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import Koa, { Context } from "koa";
 import Router from "@koa/router";
+import bodyParser from "koa-bodyparser";
 import request from "supertest";
 import sinon from "sinon";
 import { logger } from "../observability/logger";
@@ -12,9 +13,11 @@ function buildApp(handler: (ctx: Context) => void | Promise<void>): Koa {
   const router = new Router();
 
   router.get("/test/:id", handler);
+  router.post("/test/:id", handler);
 
   app.use(requestContext);
   app.use(errorHandler);
+  app.use(bodyParser());
   app.use(router.routes());
 
   return app;
@@ -76,6 +79,53 @@ describe("requestContext middleware", () => {
     expect(fields.operation).to.equal("GET /test/:id"); // pattern, not "/test/12345"
     expect(fields.status).to.equal(200);
     expect(typeof fields.duration).to.equal("number");
+  });
+
+  it("includes request/response metadata (ip, userAgent, content lengths) in the completion log", async () => {
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
+    const app = buildApp((ctx) => {
+      ctx.status = 200;
+      ctx.body = { ok: true };
+    });
+
+    await request(app.callback())
+      .get("/test/1")
+      .set("User-Agent", "test-agent/1.0");
+
+    const [fields] = childLogger.info.firstCall.args;
+    expect(fields.userAgent).to.equal("test-agent/1.0");
+    expect(typeof fields.ip).to.equal("string");
+    expect(typeof fields.responseContentLength).to.equal("number");
+  });
+
+  it("includes the request body and response body in the completion log", async () => {
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
+    const app = buildApp((ctx) => {
+      ctx.status = 201;
+      ctx.body = { received: ctx.request.body };
+    });
+
+    await request(app.callback()).post("/test/1").send({ quantity: 3 });
+
+    const [fields] = childLogger.info.firstCall.args;
+    expect(fields.requestBody).to.deep.equal({ quantity: 3 });
+    expect(fields.responseBody).to.deep.equal({ received: { quantity: 3 } });
+  });
+
+  it("omits requestBody when there is no parsed body (e.g. a GET request)", async () => {
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
+    const app = buildApp((ctx) => {
+      ctx.status = 200;
+    });
+
+    await request(app.callback()).get("/test/1");
+
+    const [fields] = childLogger.info.firstCall.args;
+    expect(fields).to.not.have.property("requestBody");
+    expect(fields).to.not.have.property("responseBody");
   });
 
   it("logs completion at error level (not info) for a 5xx response, including the errorCode", async () => {

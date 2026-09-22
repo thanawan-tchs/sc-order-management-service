@@ -1,7 +1,7 @@
 {
   "name": "order-management-service",
   "version": "1.0.0",
-  "description": "ScreenCloud order management service (Node.js + TypeScript + Koa)",
+  "description": "Order management service (Node.js + TypeScript + Koa)",
   "main": "dist/server.js",
   "type": "commonjs",
   "scripts": {

@@ -1,6 +1,6 @@
 # Order Management Service
 
-ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL.
+Order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 
 > Status: Tickets 01–17 (project bootstrap, domain models & request validation, warehouse/inventory
 > repository, pricing & volume discount, geographical distance, shipping cost, lowest-cost

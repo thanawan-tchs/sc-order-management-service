@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A ScreenCloud-style order management backend: Node.js + TypeScript + Koa + PostgreSQL. It exposes
+An order management backend: Node.js + TypeScript + Koa + PostgreSQL. It exposes
 three API endpoints (`POST /v1/orders/quote`, `POST /v1/orders`, `GET /v1/orders/:orderNumber`)
 that price an order, allocate it across warehouses by lowest shipping cost, and persist it
 atomically. See `README.md` for full endpoint docs and `order-management-service-ticket-plan/SYSTEM-DESIGN.md`

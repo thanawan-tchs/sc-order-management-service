@@ -8,7 +8,6 @@ import {
   calculateSubtotal,
   getDiscountRate,
 } from "@domain/pricing";
-import { Item } from "@domain/model/item";
 import { OrderQuote } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
 import { InvalidOrderReason, isShippingCostWithinLimit } from "@domain/validity";
@@ -42,21 +41,11 @@ export async function readWarehouseCandidates(
   return candidates;
 }
 
-export interface OrderQuoteDependencies {
-  readWarehouseCandidates: (itemId: string) => Promise<WarehouseCandidate[]>;
-  getItem: (itemId: string) => Promise<Item | undefined>;
-}
-
-const defaultDependencies: OrderQuoteDependencies = {
-  readWarehouseCandidates,
-  getItem: itemRepository.getItem,
-};
-
 export async function getOrderQuote(
   input: OrderQuoteInput,
-  deps: OrderQuoteDependencies = defaultDependencies
+  executor: QueryExecutor = getPool()
 ): Promise<OrderQuote> {
-  const item = await deps.getItem(input.itemId);
+  const item = await itemRepository.getItem(input.itemId, executor);
   if (!item) {
     throw new exception.ItemNotFoundError(input.itemId);
   }
@@ -66,7 +55,7 @@ export async function getOrderQuote(
   const discount = calculateDiscount(subtotal, discountRate);
   const amountAfterDiscount = calculateAmountAfterDiscount(subtotal, discount);
 
-  const candidates = await deps.readWarehouseCandidates(input.itemId);
+  const candidates = await readWarehouseCandidates(input.itemId, executor);
 
   const allocationResult = allocateOrder(
     input.quantity,

@@ -3,10 +3,9 @@ import { Order } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
 import { QueryExecutor } from "@infrastructure/db/pool";
 import { withTransaction } from "@infrastructure/db/transaction";
-import itemRepository from "@repositories/itemRepository";
 import orderRepository from "@repositories/orderRepository";
 import warehouseRepository from "@repositories/warehouseRepository";
-import { getOrderQuote, readWarehouseCandidates } from "./orderQuoteService";
+import { getOrderQuote } from "./orderQuoteService";
 
 export interface OrderSubmissionInput {
   itemId: string;
@@ -15,6 +14,7 @@ export interface OrderSubmissionInput {
   idempotencyKey?: string;
 }
 
+// TODO: to be improve
 function matchesClaimedOrder(existing: Order, input: OrderSubmissionInput): boolean {
   return (
     existing.item.id === input.itemId &&
@@ -53,10 +53,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
         if (existing) return existing;
       }
 
-      const quote = await getOrderQuote(input, {
-        readWarehouseCandidates: (itemId) => readWarehouseCandidates(itemId, client),
-        getItem: (itemId) => itemRepository.getItem(itemId, client),
-      });
+      const quote = await getOrderQuote(input, client);
 
       if (!quote.valid) {
         throw new exception.OrderSubmissionError(quote.invalidReasons);

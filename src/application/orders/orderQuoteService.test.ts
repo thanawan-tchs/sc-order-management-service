@@ -1,9 +1,12 @@
 import { expect } from "chai";
-import { getOrderQuote, OrderQuoteDependencies } from "./orderQuoteService";
+import sinon from "sinon";
+import { getOrderQuote } from "./orderQuoteService";
 import { WarehouseCandidate } from "@domain/allocation";
 import exception from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
+import itemRepository from "@repositories/itemRepository";
+import warehouseRepository from "@repositories/warehouseRepository";
 import { pointAtDistanceFromOrigin } from "@tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
@@ -23,18 +26,31 @@ function candidateAtDistance(distanceKm: number, warehouseId: number, stock: num
   return { warehouseId, latitude, longitude, stock };
 }
 
-function withCandidates(candidates: WarehouseCandidate[], item: Item = TEST_ITEM): OrderQuoteDependencies {
-  return {
-    readWarehouseCandidates: async () => candidates,
-    getItem: async () => item,
-  };
+function stubCandidates(candidates: WarehouseCandidate[], item: Item = TEST_ITEM): void {
+  sinon.stub(itemRepository, "getItem").resolves(item);
+  sinon.stub(warehouseRepository, "getAllWarehouses").resolves(
+    candidates.map((candidate) => ({
+      id: candidate.warehouseId,
+      name: `Warehouse ${candidate.warehouseId}`,
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+    }))
+  );
+  sinon.stub(warehouseRepository, "getInventory").callsFake(async (warehouseId: number, itemId: string) => {
+    const candidate = candidates.find((c) => c.warehouseId === warehouseId);
+    return candidate ? { warehouseId, itemId, stock: candidate.stock } : undefined;
+  });
 }
+
+afterEach(() => {
+  sinon.restore();
+});
 
 describe("getOrderQuote", () => {
   it("returns a valid quote for a straightforward single-warehouse order", async () => {
-    const deps = withCandidates([candidateAtDistance(50, 1, 100)]);
+    stubCandidates([candidateAtDistance(50, 1, 100)]);
 
-    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 10, shippingAddress: DESTINATION }, deps);
+    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 10, shippingAddress: DESTINATION });
 
     expect(quote.quantity).to.equal(10);
     expect(quote.item).to.deep.equal(TEST_ITEM);
@@ -51,31 +67,22 @@ describe("getOrderQuote", () => {
   });
 
   it("throws ItemNotFoundError for an unknown itemId, without reading inventory", async () => {
-    let readCandidatesCalled = false;
-    const deps: OrderQuoteDependencies = {
-      readWarehouseCandidates: async () => {
-        readCandidatesCalled = true;
-        return [];
-      },
-      getItem: async () => undefined,
-    };
+    sinon.stub(itemRepository, "getItem").resolves(undefined);
+    const getAllWarehousesStub = sinon.stub(warehouseRepository, "getAllWarehouses").resolves([]);
 
     await expect(
-      getOrderQuote({ itemId: "unknown-item-id", quantity: 10, shippingAddress: DESTINATION }, deps)
+      getOrderQuote({ itemId: "unknown-item-id", quantity: 10, shippingAddress: DESTINATION })
     ).to.be.rejectedWith(exception.ItemNotFoundError);
-    expect(readCandidatesCalled).to.equal(false);
+    expect(getAllWarehousesStub.called).to.equal(false);
   });
 
   it("applies the correct discount rate across tier boundaries", async () => {
-    const deps = withCandidates([candidateAtDistance(1, 1, 1000)]);
+    stubCandidates([candidateAtDistance(1, 1, 1000)]);
 
-    const below = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 24, shippingAddress: DESTINATION }, deps);
-    const at25 = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 25, shippingAddress: DESTINATION }, deps);
-    const below250 = await getOrderQuote(
-      { itemId: TEST_ITEM_ID, quantity: 249, shippingAddress: DESTINATION },
-      deps
-    );
-    const at250 = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 250, shippingAddress: DESTINATION }, deps);
+    const below = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 24, shippingAddress: DESTINATION });
+    const at25 = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 25, shippingAddress: DESTINATION });
+    const below250 = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 249, shippingAddress: DESTINATION });
+    const at250 = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 250, shippingAddress: DESTINATION });
 
     expect(below.discountRate).to.equal(0);
     expect(below.discount).to.equal(0);
@@ -100,9 +107,9 @@ describe("getOrderQuote", () => {
   it("splits a multi-warehouse order across the cheapest warehouses first", async () => {
     const warehouseA = candidateAtDistance(100, 1, 50);
     const warehouseB = candidateAtDistance(200, 2, 50);
-    const deps = withCandidates([warehouseB, warehouseA]);
+    stubCandidates([warehouseB, warehouseA]);
 
-    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 80, shippingAddress: DESTINATION }, deps);
+    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 80, shippingAddress: DESTINATION });
 
     expect(quote.allocations).to.have.lengthOf(2);
     expect(quote.allocations[0]).to.include({ warehouseId: 1, quantity: 50, shippingCost: 1825 });
@@ -113,9 +120,9 @@ describe("getOrderQuote", () => {
   });
 
   it("flags insufficient stock as invalid, while still returning the partial allocation", async () => {
-    const deps = withCandidates([candidateAtDistance(10, 1, 10)]);
+    stubCandidates([candidateAtDistance(10, 1, 10)]);
 
-    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 50, shippingAddress: DESTINATION }, deps);
+    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 50, shippingAddress: DESTINATION });
 
     expect(quote.valid).to.equal(false);
     expect(quote.invalidReasons).to.deep.equal(["INSUFFICIENT_STOCK"]);
@@ -125,9 +132,9 @@ describe("getOrderQuote", () => {
   });
 
   it("flags shipping cost exceeding 15% of the discounted amount as invalid", async () => {
-    const deps = withCandidates([candidateAtDistance(10000, 1, 10)]);
+    stubCandidates([candidateAtDistance(10000, 1, 10)]);
 
-    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION }, deps);
+    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION });
 
     expect(quote.amountAfterDiscount).to.equal(15000);
     expect(quote.shippingCost).to.equal(3650);
@@ -137,9 +144,9 @@ describe("getOrderQuote", () => {
 
   it("treats shipping cost exactly at 15% as valid (inclusive boundary)", async () => {
     const distanceForExactly2250Cents = 2250 / (1 * UNIT_WEIGHT_KG);
-    const deps = withCandidates([candidateAtDistance(distanceForExactly2250Cents, 1, 10)]);
+    stubCandidates([candidateAtDistance(distanceForExactly2250Cents, 1, 10)]);
 
-    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION }, deps);
+    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION });
 
     expect(quote.amountAfterDiscount).to.equal(15000);
     expect(quote.shippingCost).to.equal(2250);
@@ -148,9 +155,9 @@ describe("getOrderQuote", () => {
   });
 
   it("treats shipping cost below 15% as valid", async () => {
-    const deps = withCandidates([candidateAtDistance(20, 1, 50)]);
+    stubCandidates([candidateAtDistance(20, 1, 50)]);
 
-    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 5, shippingAddress: DESTINATION }, deps);
+    const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 5, shippingAddress: DESTINATION });
 
     expect(quote.shippingCost).to.equal(37);
     expect(quote.shippingCost).to.be.lessThan(11250);
@@ -161,9 +168,9 @@ describe("getOrderQuote", () => {
   it("never creates an order, changes inventory, or reserves stock", async () => {
     const candidates = [candidateAtDistance(10, 1, 100)];
     const snapshot = JSON.parse(JSON.stringify(candidates));
-    const deps = withCandidates(candidates);
+    stubCandidates(candidates);
 
-    await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 20, shippingAddress: DESTINATION }, deps);
+    await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 20, shippingAddress: DESTINATION });
 
     expect(candidates).to.deep.equal(snapshot);
   });

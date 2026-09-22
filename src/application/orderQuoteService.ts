@@ -59,12 +59,12 @@ export async function getOrderQuote(
     throw new ItemNotFoundError(input.itemId);
   }
 
-  const candidates = await deps.readWarehouseCandidates(input.itemId);
-
   const subtotalCents = calculateSubtotal(input.quantity, item.priceCents);
   const discountRate = getDiscountRate(input.quantity);
   const discountCents = calculateDiscount(subtotalCents, discountRate);
   const amountAfterDiscountCents = calculateAmountAfterDiscount(subtotalCents, discountCents);
+
+  const candidates = await deps.readWarehouseCandidates(input.itemId);
 
   const allocationResult = allocateOrder(
     input.quantity,

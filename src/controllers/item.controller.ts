@@ -5,6 +5,7 @@ import { ItemNotFoundError, ValidationError } from "../domain/errors";
 import { toMoney } from "../domain/money";
 import { Item } from "../domain/model/item";
 import { ItemRequestInput } from "../domain/validation/itemRequest.schema";
+import { toDisplayAmount } from "../utils/money";
 
 interface ItemResponseBody {
   id: string;
@@ -15,7 +16,13 @@ interface ItemResponseBody {
 }
 
 function toItemResponse(item: Item): ItemResponseBody {
-  return { id: item.id, name: item.name, price: item.price, currency: item.currency, weightKg: item.weightKg };
+  return {
+    id: item.id,
+    name: item.name,
+    price: toDisplayAmount(item.price),
+    currency: item.currency,
+    weightKg: item.weightKg,
+  };
 }
 
 export async function createItem(ctx: Context): Promise<void> {

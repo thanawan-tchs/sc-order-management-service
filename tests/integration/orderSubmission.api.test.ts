@@ -71,10 +71,10 @@ describe("POST /v1/orders", () => {
     expect(response.body.status).toBe("CONFIRMED");
     expect(response.body.quantity).toBe(100);
 
-    expect(response.body.pricing.subtotal).toBe(1500000);
+    expect(response.body.pricing.subtotal).toBe(15000);
     expect(response.body.pricing.discountRate).toBe(0.15);
-    expect(response.body.pricing.discount).toBe(225000);
-    expect(response.body.pricing.amountAfterDiscount).toBe(1275000);
+    expect(response.body.pricing.discount).toBe(2250);
+    expect(response.body.pricing.amountAfterDiscount).toBe(12750);
 
     expect(response.body.pricing.total).toBe(
       response.body.pricing.amountAfterDiscount + response.body.pricing.shippingCost
@@ -174,7 +174,7 @@ describe("POST /v1/orders", () => {
       });
 
     expect(response.status).toBe(201);
-    expect(response.body.pricing.subtotal).toBe(150000);
+    expect(response.body.pricing.subtotal).toBe(1500);
     expect(response.body.pricing.discount).toBe(0);
     expect(response.body.pricing.shippingCost).toBeGreaterThan(0);
     expect(response.body.shipping.allocations).toEqual([

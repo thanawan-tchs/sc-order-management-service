@@ -2,6 +2,7 @@ import { Context } from "koa";
 import { getOrderQuote } from "../application/orders/orderQuoteService";
 import { OrderQuote } from "../domain/model/order";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
+import { toDisplayAmount } from "../utils/money";
 
 interface QuoteResponseBody {
   valid: boolean;
@@ -40,17 +41,17 @@ function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
     item: {
       id: quote.item.id,
       name: quote.item.name,
-      price: quote.item.price,
+      price: toDisplayAmount(quote.item.price),
       currency: quote.item.currency,
     },
     quantity: quote.quantity,
     pricing: {
-      subtotal: quote.subtotal,
+      subtotal: toDisplayAmount(quote.subtotal),
       discountRate: quote.discountRate,
-      discount: quote.discount,
-      amountAfterDiscount: quote.amountAfterDiscount,
-      shippingCost: quote.shippingCost,
-      total: quote.total,
+      discount: toDisplayAmount(quote.discount),
+      amountAfterDiscount: toDisplayAmount(quote.amountAfterDiscount),
+      shippingCost: toDisplayAmount(quote.shippingCost),
+      total: toDisplayAmount(quote.total),
       currency: quote.currency,
     },
     shipping: {
@@ -59,7 +60,7 @@ function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
         warehouseId: allocation.warehouseId,
         quantity: allocation.quantity,
         distanceKm: allocation.distanceKm,
-        shippingCost: allocation.shippingCost,
+        shippingCost: toDisplayAmount(allocation.shippingCost),
         currency: allocation.currency,
       })),
     },

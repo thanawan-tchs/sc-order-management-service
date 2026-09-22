@@ -26,7 +26,7 @@ describe("POST /v1/items", () => {
     expect(response.body).toEqual({
       id: expect.any(String),
       name: "Deluxe Unit",
-      price: 25000,
+      price: 250,
       currency: "USD",
       weightKg: 1.2,
     });
@@ -87,7 +87,7 @@ describe("GET /v1/items", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([
-      { id: itemId, name: "Standard Unit", price: 15000, currency: "USD", weightKg: 0.365 },
+      { id: itemId, name: "Standard Unit", price: 150, currency: "USD", weightKg: 0.365 },
     ]);
   });
 
@@ -102,7 +102,7 @@ describe("GET /v1/items", () => {
     expect(response.body).toHaveLength(2);
     expect(response.body).toEqual(
       expect.arrayContaining([
-        { id: itemId, name: "Standard Unit", price: 15000, currency: "USD", weightKg: 0.365 },
+        { id: itemId, name: "Standard Unit", price: 150, currency: "USD", weightKg: 0.365 },
         createResponse.body,
       ])
     );
@@ -117,7 +117,7 @@ describe("GET /v1/items/:itemId", () => {
     expect(response.body).toEqual({
       id: itemId,
       name: "Standard Unit",
-      price: 15000,
+      price: 150,
       currency: "USD",
       weightKg: 0.365,
     });

@@ -130,7 +130,7 @@ describe("GET /v1/orders/:orderNumber", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.pricing.discountRate).toBe(0.42);
-    expect(response.body.pricing.discount).toBe(63000);
-    expect(response.body.pricing.amountAfterDiscount).toBe(87000);
+    expect(response.body.pricing.discount).toBe(630);
+    expect(response.body.pricing.amountAfterDiscount).toBe(870);
   });
 });

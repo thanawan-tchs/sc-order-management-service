@@ -100,8 +100,8 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
       .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(quoteResponse.status).toBe(200);
-    expect(quoteResponse.body.pricing.amountAfterDiscount).toBe(15000);
-    expect(quoteResponse.body.pricing.shippingCost).toBe(2250);
+    expect(quoteResponse.body.pricing.amountAfterDiscount).toBe(150);
+    expect(quoteResponse.body.pricing.shippingCost).toBe(22.5);
     expect(quoteResponse.body.valid).toBe(true);
     expect(quoteResponse.body.invalidReason).toBeNull();
 
@@ -110,7 +110,7 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
       .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(submitResponse.status).toBe(201);
-    expect(submitResponse.body.pricing.shippingCost).toBe(2250);
+    expect(submitResponse.body.pricing.shippingCost).toBe(22.5);
   });
 
   it("one cent over the boundary is invalid at quote and rejected at submit", async () => {
@@ -122,7 +122,7 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
       .post("/v1/orders/quote")
       .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
-    expect(quoteResponse.body.pricing.shippingCost).toBe(2251);
+    expect(quoteResponse.body.pricing.shippingCost).toBe(22.51);
     expect(quoteResponse.body.valid).toBe(false);
     expect(quoteResponse.body.invalidReason).toBe("SHIPPING_COST_EXCEEDS_15_PERCENT");
 

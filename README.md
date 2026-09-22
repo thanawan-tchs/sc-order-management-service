@@ -188,12 +188,17 @@ server-generated UUID); `400` (`INVALID_ITEM_NAME`, `INVALID_PRICE`, `INVALID_CU
 `currency` must be one of a supported set of ISO 4217 codes — currently just `"USD"`
 (`domain/money.ts`'s `CURRENCIES`, extendable by adding more values there) — and is the source of
 truth for the currency of any order placed for this item — see `POST /v1/orders/quote` below.
+**`price` in the request body is an integer number of cents** (internal storage unit, per
+`domain/money.ts`'s `Money` type); every money field in every *response* — here and in the order
+endpoints below — is instead a display-friendly decimal amount in the major currency unit (e.g.
+dollars), computed only at the controller boundary (`src/utils/money.ts`'s `toDisplayAmount`) and
+never persisted or computed on internally.
 
 ```bash
 curl -X POST http://localhost:3000/v1/items \
   -H "Content-Type: application/json" \
   -d '{"name": "Premium Unit", "price": 30000, "currency": "USD", "weightKg": 2.5}'
-# {"id":"<uuid>","name":"Premium Unit","price":30000,"currency":"USD","weightKg":2.5}
+# {"id":"<uuid>","name":"Premium Unit","price":300,"currency":"USD","weightKg":2.5}
 ```
 
 `GET /v1/items` — list the full catalog. `200` with an array of items (no pagination/filtering
@@ -201,7 +206,7 @@ yet, fine at today's scale).
 
 ```bash
 curl http://localhost:3000/v1/items
-# [{"id":"<uuid>","name":"Standard Unit","price":15000,"currency":"USD","weightKg":0.365}, ...]
+# [{"id":"<uuid>","name":"Standard Unit","price":150,"currency":"USD","weightKg":0.365}, ...]
 ```
 
 `GET /v1/items/:itemId` — retrieve a single catalog item. `200` with the item; `400`
@@ -226,10 +231,10 @@ curl -X POST http://localhost:3000/v1/orders/quote \
 ```json
 {
   "valid": true,
-  "item": { "id": "<uuid>", "name": "Standard Unit", "price": 15000, "currency": "USD" },
+  "item": { "id": "<uuid>", "name": "Standard Unit", "price": 150, "currency": "USD" },
   "quantity": 50,
-  "pricing": { "subtotal": 750000, "discountRate": 0.05, "discount": 37500, "amountAfterDiscount": 712500, "shippingCost": 4200, "total": 716700, "currency": "USD" },
-  "shipping": { "totalWeightKg": 18.25, "allocations": [{ "warehouseId": 2, "quantity": 50, "distanceKm": 8.4, "shippingCost": 4200, "currency": "USD" }] },
+  "pricing": { "subtotal": 7500, "discountRate": 0.05, "discount": 375, "amountAfterDiscount": 7125, "shippingCost": 42, "total": 7167, "currency": "USD" },
+  "shipping": { "totalWeightKg": 18.25, "allocations": [{ "warehouseId": 2, "quantity": 50, "distanceKm": 8.4, "shippingCost": 42, "currency": "USD" }] },
   "invalidReason": null
 }
 ```

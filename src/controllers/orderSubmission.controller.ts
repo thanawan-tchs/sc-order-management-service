@@ -2,6 +2,7 @@ import { Context } from "koa";
 import * as orderSubmissionService from "../application/orders/orderSubmissionService";
 import { Order } from "../domain/model/order";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
+import { toDisplayAmount } from "../utils/money";
 
 interface OrderResponseBody {
   orderNumber: string;
@@ -40,17 +41,17 @@ function toOrderResponse(order: Order): OrderResponseBody {
     item: {
       id: order.item.id,
       name: order.item.name,
-      price: order.item.price,
+      price: toDisplayAmount(order.item.price),
       currency: order.item.currency,
     },
     quantity: order.quantity,
     pricing: {
-      subtotal: order.subtotal,
+      subtotal: toDisplayAmount(order.subtotal),
       discountRate: order.discountRate,
-      discount: order.discount,
-      amountAfterDiscount: order.amountAfterDiscount,
-      shippingCost: order.shippingCost,
-      total: order.total,
+      discount: toDisplayAmount(order.discount),
+      amountAfterDiscount: toDisplayAmount(order.amountAfterDiscount),
+      shippingCost: toDisplayAmount(order.shippingCost),
+      total: toDisplayAmount(order.total),
       currency: order.currency,
     },
     shipping: {
@@ -58,7 +59,7 @@ function toOrderResponse(order: Order): OrderResponseBody {
         warehouseId: allocation.warehouseId,
         quantity: allocation.quantity,
         distanceKm: allocation.distanceKm,
-        shippingCost: allocation.shippingCost,
+        shippingCost: toDisplayAmount(allocation.shippingCost),
         currency: allocation.currency,
       })),
     },

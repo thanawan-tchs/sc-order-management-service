@@ -97,7 +97,10 @@ src/
   server.ts                 # runtime entrypoint: migrate -> seed -> listen
   routes/                   # /health (unversioned), /v1/orders/*, /v1/items/* (versioned API)
   controllers/               # one file per controller — parse/validate -> call a service -> map to HTTP
-  application/               # orderQuoteService, orderSubmissionService, getOrderService, itemService
+  application/
+    items/                    # itemService
+    orders/                   # orderQuoteService, orderSubmissionService, getOrderService
+    internal/                 # readinessService
   domain/                    # types, validation schemas, errors, pricing/distance/shipping/allocation/validity
   repositories/               # itemRepository, warehouseRepository, orderRepository
   infrastructure/
@@ -123,15 +126,18 @@ in tests (via `supertest`) without binding a real port.
 result (and, for submit, its thrown error type) to the HTTP response. No pricing/allocation logic
 lives here.
 
-**`application/`**
-- `orderQuoteService` (ticket 08) — side-effect-free quote flow: read stock → price → allocate →
-  check the 15% rule → return a quote. No HTTP, no writes.
-- `orderSubmissionService` (ticket 11) — the same calculation, reused as-is
+**`application/`** — grouped by what each service is about, not by ticket:
+- `items/itemService` — thin wrapper over `itemRepository` (create/get/list catalog items).
+- `orders/orderQuoteService` (ticket 08) — side-effect-free quote flow: read stock → price →
+  allocate → check the 15% rule → return a quote. No HTTP, no writes.
+- `orders/orderSubmissionService` (ticket 11) — the same calculation, reused as-is
   (`readWarehouseCandidates` + `getOrderQuote`), but run inside a single DB transaction and, only if
   the result is valid, followed by the inventory decrements + order creation, all through that same
   transaction's client (see "Database" below for how atomicity works).
-- `getOrderService` (ticket 14) — thin read-only wrapper over `orderRepository.getOrderByNumber`;
+- `orders/getOrderService` (ticket 14) — thin read-only wrapper over `orderRepository.getOrderByNumber`;
   never recalculates anything.
+- `internal/readinessService` (ticket 17) — the `GET /ready` database check, injectable so it's
+  unit-testable without a live database.
 
 **`domain/`** — core types (`Item`, `Warehouse`, `Inventory`, `OrderQuote`, `Order`, `Money`, ...),
 request validation schemas (zod, incl. `itemId: z.string().uuid()`), `errors.ts` (every `AppError`

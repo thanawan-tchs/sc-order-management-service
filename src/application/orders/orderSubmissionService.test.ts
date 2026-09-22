@@ -6,15 +6,15 @@ import {
   IdempotencyKeyReusedError,
   InsufficientStockError,
   OrderSubmissionError,
-} from "../domain/errors";
-import { toMoney } from "../domain/money";
-import { Item, Order } from "../domain/types";
-import * as poolModule from "../infrastructure/db/pool";
-import * as itemRepository from "../repositories/itemRepository";
-import * as orderRepository from "../repositories/orderRepository";
-import * as warehouseRepository from "../repositories/warehouseRepository";
-import { KeyMutex } from "../../tests/helpers/keyMutex";
-import { pointAtDistanceFrom } from "../../tests/helpers/geo";
+} from "../../domain/errors";
+import { toMoney } from "../../domain/money";
+import { Item, Order } from "../../domain/types";
+import * as poolModule from "../../infrastructure/db/pool";
+import * as itemRepository from "../../repositories/itemRepository";
+import * as orderRepository from "../../repositories/orderRepository";
+import * as warehouseRepository from "../../repositories/warehouseRepository";
+import { KeyMutex } from "../../../tests/helpers/keyMutex";
+import { pointAtDistanceFrom } from "../../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };
 const LOS_ANGELES_ID = 1;

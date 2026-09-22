@@ -68,12 +68,13 @@ routes/ -> controllers/ -> application/ (services) -> repositories/ -> infrastru
   shipping-cost-vs-order-value rule), `money.ts` (`Money` — a branded integer-cents type; never use
   raw floats for currency), `errors.ts` (every `AppError` subclass), `validation/` (zod request
   schemas).
-- **`application/`** — orchestrates domain + repositories: `orderQuoteService` (read stock -> price
-  -> allocate -> check validity -> return, no writes) and `orderSubmissionService` (the same
-  calculation, but run inside one DB transaction, followed by inventory decrements + order
-  creation only if valid). `orderSubmissionService` reuses `orderQuoteService`'s functions directly
-  rather than duplicating the calculation — this is the load-bearing reason the two must stay
-  API-compatible.
+- **`application/`** — orchestrates domain + repositories, grouped into `items/` (`itemService`),
+  `orders/` (`orderQuoteService`, `orderSubmissionService`, `getOrderService`), and `internal/`
+  (`readinessService`). `orderQuoteService` (read stock -> price -> allocate -> check validity ->
+  return, no writes) and `orderSubmissionService` (the same calculation, but run inside one DB
+  transaction, followed by inventory decrements + order creation only if valid) both live in
+  `orders/`. `orderSubmissionService` reuses `orderQuoteService`'s functions directly rather than
+  duplicating the calculation — this is the load-bearing reason the two must stay API-compatible.
 - **`repositories/`** — the only layer that writes raw SQL. Every function takes an optional
   `executor: QueryExecutor` (defaults to the shared pool) so a caller can pass an in-flight
   transaction `PoolClient` instead — this is how `orderSubmissionService` composes multiple

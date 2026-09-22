@@ -1,18 +1,18 @@
-import { SHIPPING_RATE_CENTS_PER_KG_KM } from "../config";
-import { WarehouseCandidate, allocateOrder } from "../domain/allocation";
-import { ItemNotFoundError } from "../domain/errors";
-import { Money, toMoney } from "../domain/money";
+import { SHIPPING_RATE_CENTS_PER_KG_KM } from "../../config";
+import { WarehouseCandidate, allocateOrder } from "../../domain/allocation";
+import { ItemNotFoundError } from "../../domain/errors";
+import { Money, toMoney } from "../../domain/money";
 import {
   calculateAmountAfterDiscount,
   calculateDiscount,
   calculateSubtotal,
   getDiscountRate,
-} from "../domain/pricing";
-import { Item, OrderQuote, ShippingAddress } from "../domain/types";
-import { InvalidOrderReason, isShippingCostWithinLimit } from "../domain/validity";
-import { QueryExecutor, getPool } from "../infrastructure/db/pool";
-import * as itemRepository from "../repositories/itemRepository";
-import * as warehouseRepository from "../repositories/warehouseRepository";
+} from "../../domain/pricing";
+import { Item, OrderQuote, ShippingAddress } from "../../domain/types";
+import { InvalidOrderReason, isShippingCostWithinLimit } from "../../domain/validity";
+import { QueryExecutor, getPool } from "../../infrastructure/db/pool";
+import * as itemRepository from "../../repositories/itemRepository";
+import * as warehouseRepository from "../../repositories/warehouseRepository";
 
 export interface OrderQuoteInput {
   itemId: string;
@@ -65,6 +65,7 @@ export async function getOrderQuote(
   const amountAfterDiscountCents = calculateAmountAfterDiscount(subtotalCents, discountCents);
 
   const candidates = await deps.readWarehouseCandidates(input.itemId);
+
   const allocationResult = allocateOrder(
     input.quantity,
     input.shippingAddress,

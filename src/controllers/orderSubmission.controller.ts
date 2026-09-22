@@ -1,5 +1,5 @@
 import { Context } from "koa";
-import * as orderSubmissionService from "../application/orderSubmissionService";
+import * as orderSubmissionService from "../application/orders/orderSubmissionService";
 import { Order } from "../domain/types";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
 

@@ -1,7 +1,7 @@
 import { Item } from "@domain/model/item";
-import * as itemRepository from "@repositories/itemRepository";
+import itemRepository, { CreateItemInput } from "@repositories/itemRepository";
 
-export async function createItem(input: itemRepository.CreateItemInput): Promise<Item> {
+export async function createItem(input: CreateItemInput): Promise<Item> {
   return itemRepository.createItem(input);
 }
 
@@ -12,3 +12,5 @@ export async function getItem(itemId: string): Promise<Item | undefined> {
 export async function getAllItems(): Promise<Item[]> {
   return itemRepository.getAllItems();
 }
+
+export default { createItem, getItem, getAllItems };

@@ -2,8 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "@app";
 import { closePool, getPool } from "@infrastructure/db/pool";
-import * as orderRepository from "@repositories/orderRepository";
-import * as warehouseRepository from "@repositories/warehouseRepository";
+import orderRepository from "@repositories/orderRepository";
+import warehouseRepository from "@repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
 

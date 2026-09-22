@@ -11,9 +11,9 @@ import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { Order } from "@domain/model/order";
 import * as poolModule from "@infrastructure/db/pool";
-import * as itemRepository from "@repositories/itemRepository";
-import * as orderRepository from "@repositories/orderRepository";
-import * as warehouseRepository from "@repositories/warehouseRepository";
+import itemRepository from "@repositories/itemRepository";
+import orderRepository from "@repositories/orderRepository";
+import warehouseRepository from "@repositories/warehouseRepository";
 import { KeyMutex } from "@tests/helpers/keyMutex";
 import { pointAtDistanceFrom } from "@tests/helpers/geo";
 

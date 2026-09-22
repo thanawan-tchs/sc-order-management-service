@@ -13,8 +13,8 @@ import { OrderQuote } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
 import { InvalidOrderReason, isShippingCostWithinLimit } from "@domain/validity";
 import { QueryExecutor, getPool } from "@infrastructure/db/pool";
-import * as itemRepository from "@repositories/itemRepository";
-import * as warehouseRepository from "@repositories/warehouseRepository";
+import itemRepository from "@repositories/itemRepository";
+import warehouseRepository from "@repositories/warehouseRepository";
 
 export interface OrderQuoteInput {
   itemId: string;

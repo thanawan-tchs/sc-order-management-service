@@ -44,3 +44,5 @@ export async function createItem(
   );
   return mapItemRow(rows[0]);
 }
+
+export default { getItem, getAllItems, createItem };

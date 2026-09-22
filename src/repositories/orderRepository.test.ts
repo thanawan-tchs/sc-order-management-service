@@ -5,7 +5,7 @@ import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { OrderQuote } from "@domain/model/order";
 import { QueryExecutor } from "@infrastructure/db/pool";
-import * as orderRepository from "./orderRepository";
+import orderRepository from "./orderRepository";
 
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;

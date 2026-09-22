@@ -3,9 +3,9 @@ import { Order } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
 import { QueryExecutor } from "@infrastructure/db/pool";
 import { withTransaction } from "@infrastructure/db/transaction";
-import * as itemRepository from "@repositories/itemRepository";
-import * as orderRepository from "@repositories/orderRepository";
-import * as warehouseRepository from "@repositories/warehouseRepository";
+import itemRepository from "@repositories/itemRepository";
+import orderRepository from "@repositories/orderRepository";
+import warehouseRepository from "@repositories/warehouseRepository";
 import { getOrderQuote, readWarehouseCandidates } from "./orderQuoteService";
 
 export interface OrderSubmissionInput {
@@ -82,3 +82,5 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
     throw error;
   }
 }
+
+export default { submitOrder };

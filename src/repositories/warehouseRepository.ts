@@ -72,3 +72,5 @@ export async function decrementInventory(
     throw new InsufficientStockError(warehouseId, quantity);
   }
 }
+
+export default { getAllWarehouses, getWarehouse, getInventory, decrementInventory };

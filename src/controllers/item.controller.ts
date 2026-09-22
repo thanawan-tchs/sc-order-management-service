@@ -1,6 +1,6 @@
 import { Context } from "koa";
 import { z } from "zod";
-import * as itemService from "@application/items/itemService";
+import itemService from "@application/items/itemService";
 import { ItemNotFoundError, ValidationError } from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";

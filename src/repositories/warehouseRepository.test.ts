@@ -3,7 +3,7 @@ import sinon from "sinon";
 import { SEED_WAREHOUSES } from "@config";
 import { InsufficientStockError } from "@domain/errors";
 import { QueryExecutor } from "@infrastructure/db/pool";
-import * as warehouseRepository from "./warehouseRepository";
+import warehouseRepository from "./warehouseRepository";
 
 function fakeExecutor(query: sinon.SinonStub): QueryExecutor {
   return { query } as unknown as QueryExecutor;

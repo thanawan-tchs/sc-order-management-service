@@ -194,3 +194,5 @@ export async function recordIdempotencyKey(
     throw error;
   }
 }
+
+export default { createOrder, getOrderByNumber, findOrderByIdempotencyKey, recordIdempotencyKey };

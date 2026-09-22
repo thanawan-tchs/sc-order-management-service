@@ -7,6 +7,7 @@ export const migration_0005_items: Migration = {
       id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name        TEXT NOT NULL,
       price       INTEGER NOT NULL CHECK (price > 0),
+      currency    TEXT NOT NULL,
       weight_kg   DOUBLE PRECISION NOT NULL CHECK (weight_kg > 0)
     )`,
   ],

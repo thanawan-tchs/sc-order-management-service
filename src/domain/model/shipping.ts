@@ -1,4 +1,4 @@
-import { Money } from "../money";
+import { Currency, Money } from "../money";
 
 export interface ShippingAddress {
   latitude: number;
@@ -10,5 +10,5 @@ export interface ShippingAllocation {
   quantity: number;
   distanceKm: number;
   shippingCost: Money;
-  currency: string;
+  currency: Currency;
 }

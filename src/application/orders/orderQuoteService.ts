@@ -1,4 +1,4 @@
-import { CURRENCY, SHIPPING_RATE_PER_KG_KM } from "../../config";
+import { SHIPPING_RATE_PER_KG_KM } from "../../config";
 import { WarehouseCandidate, allocateOrder } from "../../domain/allocation";
 import { ItemNotFoundError } from "../../domain/errors";
 import { Money, toMoney } from "../../domain/money";
@@ -74,7 +74,7 @@ export async function getOrderQuote(
     candidates,
     item.weightKg,
     SHIPPING_RATE_PER_KG_KM,
-    CURRENCY
+    item.currency
   );
   const shippingCost: Money = allocationResult.totalShippingCost;
   const total = toMoney(amountAfterDiscount + shippingCost);
@@ -98,7 +98,7 @@ export async function getOrderQuote(
     totalWeightKg: input.quantity * item.weightKg,
     shippingCost,
     total,
-    currency: CURRENCY,
+    currency: item.currency,
     valid: invalidReasons.length === 0,
     invalidReasons,
     allocations: allocationResult.allocations,

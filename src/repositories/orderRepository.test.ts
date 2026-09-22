@@ -14,6 +14,7 @@ const defaultItem: Item = {
   id: "11111111-1111-1111-1111-111111111111",
   name: "Standard Unit",
   price: toMoney(15000),
+  currency: "USD",
   weightKg: 0.365,
 };
 
@@ -228,7 +229,7 @@ describe("createOrder", () => {
   it("preserves the item snapshot, independent of the catalog's current values", async () => {
     const db = createFakeDb();
     const quote = buildQuote({
-      item: { id: defaultItem.id, name: "Renamed Product", price: toMoney(99999), weightKg: 1.23 },
+      item: { id: defaultItem.id, name: "Renamed Product", price: toMoney(99999), currency: "USD", weightKg: 1.23 },
     });
 
     const order = await orderRepository.createOrder(quote, db);
@@ -238,6 +239,7 @@ describe("createOrder", () => {
       id: defaultItem.id,
       name: "Renamed Product",
       price: 99999,
+      currency: "USD",
       weightKg: 1.23,
     });
   });

@@ -10,11 +10,12 @@ interface ItemResponseBody {
   id: string;
   name: string;
   price: number;
+  currency: string;
   weightKg: number;
 }
 
 function toItemResponse(item: Item): ItemResponseBody {
-  return { id: item.id, name: item.name, price: item.price, weightKg: item.weightKg };
+  return { id: item.id, name: item.name, price: item.price, currency: item.currency, weightKg: item.weightKg };
 }
 
 export async function createItem(ctx: Context): Promise<void> {
@@ -22,6 +23,7 @@ export async function createItem(ctx: Context): Promise<void> {
   const item = await itemService.createItem({
     name: input.name,
     price: toMoney(input.price),
+    currency: input.currency,
     weightKg: input.weightKg,
   });
 

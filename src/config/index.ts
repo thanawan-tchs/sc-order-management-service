@@ -1,3 +1,5 @@
+import { Currency } from "../domain/money";
+
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 3000),
@@ -18,9 +20,9 @@ export const config = {
 
 export const SHIPPING_RATE_PER_KG_KM = 1;
 
-export const CURRENCY = "USD";
+export const CURRENCY: Currency = "USD";
 
-export const SEED_ITEMS = [{ name: "Standard Unit", price: 15000, weightKg: 0.365 }];
+export const SEED_ITEMS = [{ name: "Standard Unit", price: 15000, currency: CURRENCY, weightKg: 0.365 }];
 
 export const SEED_WAREHOUSES = [
   { name: "Los Angeles", latitude: 33.9425, longitude: -118.408056, stock: 355 },

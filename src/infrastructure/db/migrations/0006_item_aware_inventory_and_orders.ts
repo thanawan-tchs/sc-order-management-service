@@ -3,7 +3,7 @@ import { Migration } from "./migration";
 export const migration_0006_item_aware_inventory_and_orders: Migration = {
   id: "0006_item_aware_inventory_and_orders",
   statements: [
-    `INSERT INTO items (name, price, weight_kg) VALUES ('Standard Unit', 15000, 0.365)`,
+    `INSERT INTO items (name, price, currency, weight_kg) VALUES ('Standard Unit', 15000, 'USD', 0.365)`,
 
     `ALTER TABLE inventory ADD COLUMN IF NOT EXISTS item_id UUID REFERENCES items (id)`,
     `UPDATE inventory SET item_id = (SELECT id FROM items ORDER BY id LIMIT 1) WHERE item_id IS NULL`,

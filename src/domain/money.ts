@@ -8,3 +8,6 @@ export function toMoney(cents: number): Money {
 }
 
 export const ZERO_MONEY = toMoney(0);
+
+export const CURRENCIES = ["USD"] as const;
+export type Currency = (typeof CURRENCIES)[number];

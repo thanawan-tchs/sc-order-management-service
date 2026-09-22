@@ -1,5 +1,5 @@
 import { IdempotencyKeyConflictError } from "../domain/errors";
-import { toMoney } from "../domain/money";
+import { Currency, toMoney } from "../domain/money";
 import { Order, OrderQuote, OrderStatus } from "../domain/model/order";
 import { ShippingAllocation } from "../domain/model/shipping";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
@@ -26,7 +26,7 @@ interface OrderRow {
   amount_after_discount: number;
   shipping: number;
   total: number;
-  currency: string;
+  currency: Currency;
   status: OrderStatus;
   created_at: Date;
 }
@@ -36,7 +36,7 @@ interface AllocationRow {
   quantity: number;
   distance_km: number;
   shipping: number;
-  currency: string;
+  currency: Currency;
 }
 
 function mapAllocationRow(row: AllocationRow): ShippingAllocation {
@@ -56,6 +56,7 @@ function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
       id: row.item_id,
       name: row.item_name,
       price: toMoney(row.item_price),
+      currency: row.currency,
       weightKg: row.item_weight_kg,
     },
     shippingAddress: { latitude: row.destination_latitude, longitude: row.destination_longitude },

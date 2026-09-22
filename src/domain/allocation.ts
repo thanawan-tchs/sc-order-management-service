@@ -1,5 +1,5 @@
 import { calculateDistanceKm } from "./distance";
-import { Money } from "./money";
+import { Currency, Money } from "./money";
 import { calculateShippingCost, sumShippingCosts } from "./shipping";
 import { ShippingAddress, ShippingAllocation } from "./model/shipping";
 
@@ -22,7 +22,7 @@ export function allocateOrder(
   warehouses: WarehouseCandidate[],
   unitWeightKg: number,
   ratePerKgPerKm: number,
-  currency: string
+  currency: Currency
 ): AllocationResult {
   const candidates = warehouses
     .filter((w) => w.stock > 0)

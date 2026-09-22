@@ -16,8 +16,8 @@ async function seedItems(pool: Pool): Promise<string> {
 
   const [item] = SEED_ITEMS;
   const { rows: inserted } = await pool.query<{ id: string }>(
-    "INSERT INTO items (name, price, weight_kg) VALUES ($1, $2, $3) RETURNING id",
-    [item.name, item.price, item.weightKg]
+    "INSERT INTO items (name, price, currency, weight_kg) VALUES ($1, $2, $3, $4) RETURNING id",
+    [item.name, item.price, item.currency, item.weightKg]
   );
   return inserted[0].id;
 }

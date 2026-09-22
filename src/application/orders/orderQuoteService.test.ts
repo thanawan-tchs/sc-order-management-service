@@ -10,7 +10,13 @@ const DESTINATION = { latitude: 0, longitude: 0 };
 
 const UNIT_WEIGHT_KG = 0.365;
 const TEST_ITEM_ID = "test-item-id";
-const TEST_ITEM: Item = { id: TEST_ITEM_ID, name: "Standard Unit", price: toMoney(15000), weightKg: UNIT_WEIGHT_KG };
+const TEST_ITEM: Item = {
+  id: TEST_ITEM_ID,
+  name: "Standard Unit",
+  price: toMoney(15000),
+  currency: "USD",
+  weightKg: UNIT_WEIGHT_KG,
+};
 
 function candidateAtDistance(distanceKm: number, warehouseId: number, stock: number): WarehouseCandidate {
   const { latitude, longitude } = pointAtDistanceFromOrigin(distanceKm);

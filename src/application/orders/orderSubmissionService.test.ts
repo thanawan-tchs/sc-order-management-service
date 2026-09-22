@@ -22,7 +22,7 @@ const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 const SAO_PAULO_ID = 3;
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";
-const ITEM: Item = { id: ITEM_ID, name: "Standard Unit", price: toMoney(15000), weightKg: 0.365 };
+const ITEM: Item = { id: ITEM_ID, name: "Standard Unit", price: toMoney(15000), currency: "USD", weightKg: 0.365 };
 
 function warehouseAt(id: number, distanceKm: number, origin: { latitude: number; longitude: number } = DESTINATION) {
   const { latitude, longitude } = pointAtDistanceFrom(origin, distanceKm);
@@ -515,7 +515,13 @@ describe("submitOrder — idempotency key reused for a different request (ticket
 
   it("rejects a key reused with a different itemId", async () => {
     stubPool();
-    const otherItem: Item = { id: "22222222-2222-2222-2222-222222222222", name: "Second Item", price: toMoney(5000), weightKg: 0.5 };
+    const otherItem: Item = {
+      id: "22222222-2222-2222-2222-222222222222",
+      name: "Second Item",
+      price: toMoney(5000),
+      currency: "USD",
+      weightKg: 0.5,
+    };
     sinon.stub(itemRepository, "getItem").callsFake(async (id: string) => (id === ITEM_ID ? ITEM : otherItem));
     sinon.stub(warehouseRepository, "getAllWarehouses").resolves([warehouseAt(LOS_ANGELES_ID, 10)]);
     sinon.stub(warehouseRepository, "getInventory").resolves({ warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: 100 });

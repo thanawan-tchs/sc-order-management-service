@@ -1,4 +1,4 @@
-import { Money } from "../money";
+import { Currency, Money } from "../money";
 import { InvalidOrderReason } from "../validity";
 import { Item } from "./item";
 import { ShippingAddress, ShippingAllocation } from "./shipping";
@@ -14,7 +14,7 @@ export interface OrderQuote {
   totalWeightKg: number;
   shippingCost: Money;
   total: Money;
-  currency: string;
+  currency: Currency;
   valid: boolean;
   invalidReasons: InvalidOrderReason[];
   allocations: ShippingAllocation[];

@@ -1,7 +1,9 @@
 import { Context, Next } from "koa";
 import { ZodIssue, ZodSchema } from "zod";
 import { ValidationError } from "../domain/errors";
+import { CURRENCIES } from "../domain/money";
 
+// TODO: to be improve
 function toValidationError(issues: ZodIssue[]): ValidationError {
   const [issue] = issues;
   const path = issue.path.join(".");
@@ -31,6 +33,12 @@ function toValidationError(issues: ZodIssue[]): ValidationError {
     return new ValidationError(
       "INVALID_PRICE",
       "price is required and must be a positive integer."
+    );
+  }
+  if (path === "currency") {
+    return new ValidationError(
+      "INVALID_CURRENCY",
+      `currency is required and must be one of: ${CURRENCIES.join(", ")}.`
     );
   }
   if (path === "weightKg") {

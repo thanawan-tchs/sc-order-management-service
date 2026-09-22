@@ -13,6 +13,7 @@ const defaultItem: Item = {
   id: "11111111-1111-1111-1111-111111111111",
   name: "Standard Unit",
   price: toMoney(15000),
+  currency: "USD",
   weightKg: 0.365,
 };
 

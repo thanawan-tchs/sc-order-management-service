@@ -9,9 +9,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # Integration tests (tests/integration/, plus several unit-test files that exercise real
-    # repository/transaction behavior) run against a real Postgres, same as local dev's
-    # docker-compose db service — just a single database here since CI never runs the app
+    # Only test:api (tests/integration/, via vitest) touches this — test:unit (mocha) never
+    # connects to a real database, it mocks the DB layer with sinon. Same Postgres image as local
+    # dev's docker-compose db service — just a single database here since CI never runs the app
     # against "dev" data, only tests against TEST_DATABASE_URL.
     services:
       postgres:

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { expect } from "chai";
 import { getOrderQuote, OrderQuoteDependencies } from "./orderQuoteService";
 import { WarehouseCandidate } from "../domain/allocation";
 import { ItemNotFoundError } from "../domain/errors";
@@ -30,18 +30,18 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 10, shippingAddress: DESTINATION }, deps);
 
-    expect(quote.quantity).toBe(10);
-    expect(quote.item).toEqual(TEST_ITEM);
-    expect(quote.subtotalCents).toBe(150000);
-    expect(quote.discountRate).toBe(0);
-    expect(quote.discountCents).toBe(0);
-    expect(quote.amountAfterDiscountCents).toBe(150000);
-    expect(quote.totalWeightKg).toBeCloseTo(10 * UNIT_WEIGHT_KG, 10);
-    expect(quote.shippingCostCents).toBe(183);
-    expect(quote.totalCents).toBe(150000 + 183);
-    expect(quote.allocations).toHaveLength(1);
-    expect(quote.valid).toBe(true);
-    expect(quote.invalidReasons).toEqual([]);
+    expect(quote.quantity).to.equal(10);
+    expect(quote.item).to.deep.equal(TEST_ITEM);
+    expect(quote.subtotalCents).to.equal(150000);
+    expect(quote.discountRate).to.equal(0);
+    expect(quote.discountCents).to.equal(0);
+    expect(quote.amountAfterDiscountCents).to.equal(150000);
+    expect(quote.totalWeightKg).to.be.closeTo(10 * UNIT_WEIGHT_KG, 1e-10);
+    expect(quote.shippingCostCents).to.equal(183);
+    expect(quote.totalCents).to.equal(150000 + 183);
+    expect(quote.allocations).to.have.lengthOf(1);
+    expect(quote.valid).to.equal(true);
+    expect(quote.invalidReasons).to.deep.equal([]);
   });
 
   it("throws ItemNotFoundError for an unknown itemId, without reading inventory", async () => {
@@ -56,8 +56,8 @@ describe("getOrderQuote", () => {
 
     await expect(
       getOrderQuote({ itemId: "unknown-item-id", quantity: 10, shippingAddress: DESTINATION }, deps)
-    ).rejects.toBeInstanceOf(ItemNotFoundError);
-    expect(readCandidatesCalled).toBe(false);
+    ).to.be.rejectedWith(ItemNotFoundError);
+    expect(readCandidatesCalled).to.equal(false);
   });
 
   it("applies the correct discount rate across tier boundaries", async () => {
@@ -71,23 +71,23 @@ describe("getOrderQuote", () => {
     );
     const at250 = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 250, shippingAddress: DESTINATION }, deps);
 
-    expect(below.discountRate).toBe(0);
-    expect(below.discountCents).toBe(0);
+    expect(below.discountRate).to.equal(0);
+    expect(below.discountCents).to.equal(0);
 
-    expect(at25.discountRate).toBe(0.05);
-    expect(at25.subtotalCents).toBe(375000);
-    expect(at25.discountCents).toBe(18750);
-    expect(at25.amountAfterDiscountCents).toBe(356250);
+    expect(at25.discountRate).to.equal(0.05);
+    expect(at25.subtotalCents).to.equal(375000);
+    expect(at25.discountCents).to.equal(18750);
+    expect(at25.amountAfterDiscountCents).to.equal(356250);
 
-    expect(below250.discountRate).toBe(0.15);
+    expect(below250.discountRate).to.equal(0.15);
 
-    expect(at250.discountRate).toBe(0.2);
-    expect(at250.subtotalCents).toBe(3750000);
-    expect(at250.discountCents).toBe(750000);
-    expect(at250.amountAfterDiscountCents).toBe(3000000);
+    expect(at250.discountRate).to.equal(0.2);
+    expect(at250.subtotalCents).to.equal(3750000);
+    expect(at250.discountCents).to.equal(750000);
+    expect(at250.amountAfterDiscountCents).to.equal(3000000);
 
     for (const quote of [below, at25, below250, at250]) {
-      expect(quote.valid).toBe(true);
+      expect(quote.valid).to.equal(true);
     }
   });
 
@@ -98,12 +98,12 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 80, shippingAddress: DESTINATION }, deps);
 
-    expect(quote.allocations).toHaveLength(2);
-    expect(quote.allocations[0]).toMatchObject({ warehouseId: 1, quantity: 50, shippingCostCents: 1825 });
-    expect(quote.allocations[1]).toMatchObject({ warehouseId: 2, quantity: 30, shippingCostCents: 2190 });
-    expect(quote.shippingCostCents).toBe(4015);
-    expect(quote.discountRate).toBe(0.1);
-    expect(quote.valid).toBe(true);
+    expect(quote.allocations).to.have.lengthOf(2);
+    expect(quote.allocations[0]).to.include({ warehouseId: 1, quantity: 50, shippingCostCents: 1825 });
+    expect(quote.allocations[1]).to.include({ warehouseId: 2, quantity: 30, shippingCostCents: 2190 });
+    expect(quote.shippingCostCents).to.equal(4015);
+    expect(quote.discountRate).to.equal(0.1);
+    expect(quote.valid).to.equal(true);
   });
 
   it("flags insufficient stock as invalid, while still returning the partial allocation", async () => {
@@ -111,10 +111,11 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 50, shippingAddress: DESTINATION }, deps);
 
-    expect(quote.valid).toBe(false);
-    expect(quote.invalidReasons).toEqual(["INSUFFICIENT_STOCK"]);
-    expect(quote.allocations).toEqual([expect.objectContaining({ warehouseId: 1, quantity: 10 })]);
-    expect(quote.subtotalCents).toBe(50 * 15000);
+    expect(quote.valid).to.equal(false);
+    expect(quote.invalidReasons).to.deep.equal(["INSUFFICIENT_STOCK"]);
+    expect(quote.allocations).to.have.lengthOf(1);
+    expect(quote.allocations[0]).to.include({ warehouseId: 1, quantity: 10 });
+    expect(quote.subtotalCents).to.equal(50 * 15000);
   });
 
   it("flags shipping cost exceeding 15% of the discounted amount as invalid", async () => {
@@ -122,10 +123,10 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION }, deps);
 
-    expect(quote.amountAfterDiscountCents).toBe(15000);
-    expect(quote.shippingCostCents).toBe(3650);
-    expect(quote.valid).toBe(false);
-    expect(quote.invalidReasons).toEqual(["SHIPPING_COST_EXCEEDS_15_PERCENT"]);
+    expect(quote.amountAfterDiscountCents).to.equal(15000);
+    expect(quote.shippingCostCents).to.equal(3650);
+    expect(quote.valid).to.equal(false);
+    expect(quote.invalidReasons).to.deep.equal(["SHIPPING_COST_EXCEEDS_15_PERCENT"]);
   });
 
   it("treats shipping cost exactly at 15% as valid (inclusive boundary)", async () => {
@@ -134,10 +135,10 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 1, shippingAddress: DESTINATION }, deps);
 
-    expect(quote.amountAfterDiscountCents).toBe(15000);
-    expect(quote.shippingCostCents).toBe(2250);
-    expect(quote.valid).toBe(true);
-    expect(quote.invalidReasons).toEqual([]);
+    expect(quote.amountAfterDiscountCents).to.equal(15000);
+    expect(quote.shippingCostCents).to.equal(2250);
+    expect(quote.valid).to.equal(true);
+    expect(quote.invalidReasons).to.deep.equal([]);
   });
 
   it("treats shipping cost below 15% as valid", async () => {
@@ -145,10 +146,10 @@ describe("getOrderQuote", () => {
 
     const quote = await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 5, shippingAddress: DESTINATION }, deps);
 
-    expect(quote.shippingCostCents).toBe(37);
-    expect(quote.shippingCostCents).toBeLessThan(11250);
-    expect(quote.valid).toBe(true);
-    expect(quote.invalidReasons).toEqual([]);
+    expect(quote.shippingCostCents).to.equal(37);
+    expect(quote.shippingCostCents).to.be.lessThan(11250);
+    expect(quote.valid).to.equal(true);
+    expect(quote.invalidReasons).to.deep.equal([]);
   });
 
   it("never creates an order, changes inventory, or reserves stock", async () => {
@@ -158,6 +159,6 @@ describe("getOrderQuote", () => {
 
     await getOrderQuote({ itemId: TEST_ITEM_ID, quantity: 20, shippingAddress: DESTINATION }, deps);
 
-    expect(candidates).toEqual(snapshot);
+    expect(candidates).to.deep.equal(snapshot);
   });
 });

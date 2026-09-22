@@ -1,23 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { expect } from "chai";
 import { toMoney } from "./money";
 import { isShippingCostWithinLimit, MAX_SHIPPING_RATIO } from "./validity";
 
 describe("isShippingCostWithinLimit", () => {
   it("documents the 15% figure consistently with the actual limit", () => {
-    expect(MAX_SHIPPING_RATIO).toBe(0.15);
+    expect(MAX_SHIPPING_RATIO).to.equal(0.15);
   });
 
   it("is within limit when shipping is well below 15%", () => {
-    expect(isShippingCostWithinLimit(toMoney(100), toMoney(10000))).toBe(true);
+    expect(isShippingCostWithinLimit(toMoney(100), toMoney(10000))).to.equal(true);
   });
 
   it("is over limit when shipping is well above 15%", () => {
-    expect(isShippingCostWithinLimit(toMoney(5000), toMoney(10000))).toBe(false);
+    expect(isShippingCostWithinLimit(toMoney(5000), toMoney(10000))).to.equal(false);
   });
 
   it("is within limit at zero shipping cost, for any positive amount", () => {
-    expect(isShippingCostWithinLimit(toMoney(0), toMoney(1))).toBe(true);
-    expect(isShippingCostWithinLimit(toMoney(0), toMoney(1_000_000))).toBe(true);
+    expect(isShippingCostWithinLimit(toMoney(0), toMoney(1))).to.equal(true);
+    expect(isShippingCostWithinLimit(toMoney(0), toMoney(1_000_000))).to.equal(true);
   });
 
   describe("the exact 15% boundary (inclusive)", () => {
@@ -25,15 +25,15 @@ describe("isShippingCostWithinLimit", () => {
     const exactlyFifteenPercent = toMoney(1500);
 
     it("is within limit at exactly 15%", () => {
-      expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscountCents)).toBe(true);
+      expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscountCents)).to.equal(true);
     });
 
     it("is within limit at one cent under 15%", () => {
-      expect(isShippingCostWithinLimit(toMoney(1499), amountAfterDiscountCents)).toBe(true);
+      expect(isShippingCostWithinLimit(toMoney(1499), amountAfterDiscountCents)).to.equal(true);
     });
 
     it("is over limit at one cent over 15%", () => {
-      expect(isShippingCostWithinLimit(toMoney(1501), amountAfterDiscountCents)).toBe(false);
+      expect(isShippingCostWithinLimit(toMoney(1501), amountAfterDiscountCents)).to.equal(false);
     });
   });
 
@@ -42,10 +42,10 @@ describe("isShippingCostWithinLimit", () => {
       const exactlyFifteenPercent = Math.round(amountAfterDiscountCents * 0.15);
       expect(
         isShippingCostWithinLimit(toMoney(exactlyFifteenPercent), toMoney(amountAfterDiscountCents))
-      ).toBe(true);
+      ).to.equal(true);
       expect(
         isShippingCostWithinLimit(toMoney(exactlyFifteenPercent + 1), toMoney(amountAfterDiscountCents))
-      ).toBe(false);
+      ).to.equal(false);
     }
   });
 
@@ -53,7 +53,7 @@ describe("isShippingCostWithinLimit", () => {
     const amountAfterDiscountCents = toMoney(150000);
     const exactlyFifteenPercent = toMoney(22500);
 
-    expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscountCents)).toBe(true);
-    expect(isShippingCostWithinLimit(toMoney(22501), amountAfterDiscountCents)).toBe(false);
+    expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscountCents)).to.equal(true);
+    expect(isShippingCostWithinLimit(toMoney(22501), amountAfterDiscountCents)).to.equal(false);
   });
 });

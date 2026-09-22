@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { expect } from "chai";
 import { allocateOrder, WarehouseCandidate } from "./allocation";
 import { calculateShippingCost } from "./shipping";
 import { pointAtDistanceFromOrigin } from "../../tests/helpers/geo";
@@ -19,16 +19,11 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(300, DESTINATION, [warehouse], WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations).toEqual([
-      {
-        warehouseId: 1,
-        quantity: 300,
-        distanceKm: expect.closeTo(50, 6),
-        shippingCostCents: 15000,
-      },
-    ]);
-    expect(result.totalShippingCostCents).toBe(15000); // 50km * 300 * 1kg * 1c
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations).to.have.lengthOf(1);
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 300, shippingCostCents: 15000 });
+    expect(result.allocations[0].distanceKm).to.be.closeTo(50, 1e-6);
+    expect(result.totalShippingCostCents).to.equal(15000); // 50km * 300 * 1kg * 1c
   });
 
   it("two warehouses: drains the cheaper one first, then spills into the second", () => {
@@ -37,22 +32,13 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(100, DESTINATION, [far, near], WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations).toEqual([
-      {
-        warehouseId: 1,
-        quantity: 80,
-        distanceKm: expect.closeTo(50, 6),
-        shippingCostCents: 4000,
-      },
-      {
-        warehouseId: 2,
-        quantity: 20,
-        distanceKm: expect.closeTo(150, 6),
-        shippingCostCents: 3000,
-      },
-    ]);
-    expect(result.totalShippingCostCents).toBe(7000);
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations).to.have.lengthOf(2);
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 80, shippingCostCents: 4000 });
+    expect(result.allocations[0].distanceKm).to.be.closeTo(50, 1e-6);
+    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCostCents: 3000 });
+    expect(result.allocations[1].distanceKm).to.be.closeTo(150, 1e-6);
+    expect(result.totalShippingCostCents).to.equal(7000);
   });
 
   it("three warehouses: matches the ticket's own worked example (A=100, B=20, C=0)", () => {
@@ -62,23 +48,14 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(120, DESTINATION, [c, a, b], WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations).toEqual([
-      {
-        warehouseId: 1,
-        quantity: 100,
-        distanceKm: expect.closeTo(100, 6),
-        shippingCostCents: 10000,
-      },
-      {
-        warehouseId: 2,
-        quantity: 20,
-        distanceKm: expect.closeTo(200, 6),
-        shippingCostCents: 4000,
-      },
-    ]);
-    expect(result.allocations.find((line) => line.warehouseId === 3)).toBeUndefined();
-    expect(result.totalShippingCostCents).toBe(14000); // $140.00
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations).to.have.lengthOf(2);
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 100, shippingCostCents: 10000 });
+    expect(result.allocations[0].distanceKm).to.be.closeTo(100, 1e-6);
+    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCostCents: 4000 });
+    expect(result.allocations[1].distanceKm).to.be.closeTo(200, 1e-6);
+    expect(result.allocations.find((line) => line.warehouseId === 3)).to.equal(undefined);
+    expect(result.totalShippingCostCents).to.equal(14000); // $140.00
   });
 
   it("exact stock: fully drains every warehouse needed with nothing left over or short", () => {
@@ -88,13 +65,13 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(150, DESTINATION, [a, b, untouchedButCheaperNever], WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations.map((l) => ({ warehouseId: l.warehouseId, quantity: l.quantity }))).toEqual([
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations.map((l) => ({ warehouseId: l.warehouseId, quantity: l.quantity }))).to.deep.equal([
       { warehouseId: 1, quantity: 100 },
       { warehouseId: 2, quantity: 50 },
     ]);
     const totalAllocated = result.allocations.reduce((sum, l) => sum + l.quantity, 0);
-    expect(totalAllocated).toBe(150);
+    expect(totalAllocated).to.equal(150);
   });
 
   it("insufficient stock: reports unfulfilled and allocates only what's available", () => {
@@ -103,12 +80,12 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(100, DESTINATION, [a, b], WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(false);
+    expect(result.fulfilled).to.equal(false);
     const totalAllocated = result.allocations.reduce((sum, l) => sum + l.quantity, 0);
-    expect(totalAllocated).toBe(70); // all available stock, short of the requested 100
+    expect(totalAllocated).to.equal(70); // all available stock, short of the requested 100
     for (const line of result.allocations) {
       const warehouse = [a, b].find((w) => w.warehouseId === line.warehouseId)!;
-      expect(line.quantity).toBeLessThanOrEqual(warehouse.stock);
+      expect(line.quantity).to.be.at.most(warehouse.stock);
     }
   });
 
@@ -121,8 +98,8 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(1000, DESTINATION, warehouses, WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(false);
-    expect(result.allocations.reduce((sum, l) => sum + l.quantity, 0)).toBe(15);
+    expect(result.fulfilled).to.equal(false);
+    expect(result.allocations.reduce((sum, l) => sum + l.quantity, 0)).to.equal(15);
   });
 
   it("equal shipping cost: ties are broken deterministically (ascending warehouseId)", () => {
@@ -132,21 +109,12 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(50, DESTINATION, [higherId, lowerId], WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations).toEqual([
-      {
-        warehouseId: 1,
-        quantity: 30,
-        distanceKm: expect.closeTo(100, 6),
-        shippingCostCents: 3000,
-      },
-      {
-        warehouseId: 2,
-        quantity: 20,
-        distanceKm: expect.closeTo(100, 6),
-        shippingCostCents: 2000,
-      },
-    ]);
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations).to.have.lengthOf(2);
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 30, shippingCostCents: 3000 });
+    expect(result.allocations[0].distanceKm).to.be.closeTo(100, 1e-6);
+    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCostCents: 2000 });
+    expect(result.allocations[1].distanceKm).to.be.closeTo(100, 1e-6);
   });
 
   it("large order: correctly spreads across many warehouses in cost order", () => {
@@ -156,15 +124,15 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(100000, DESTINATION, warehouses, WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations.map((l) => ({ warehouseId: l.warehouseId, quantity: l.quantity }))).toEqual([
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations.map((l) => ({ warehouseId: l.warehouseId, quantity: l.quantity }))).to.deep.equal([
       { warehouseId: 1, quantity: 30000 },
       { warehouseId: 2, quantity: 30000 },
       { warehouseId: 3, quantity: 30000 },
       { warehouseId: 4, quantity: 10000 },
     ]);
     const totalAllocated = result.allocations.reduce((sum, l) => sum + l.quantity, 0);
-    expect(totalAllocated).toBe(100000);
+    expect(totalAllocated).to.equal(100000);
   });
 
   it("never allocates more than a warehouse's stock, and never allocates to zero-stock warehouses", () => {
@@ -176,11 +144,11 @@ describe("allocateOrder", () => {
 
     const result = allocateOrder(50, DESTINATION, warehouses, WEIGHT_KG, RATE);
 
-    expect(result.fulfilled).toBe(true);
-    expect(result.allocations.find((l) => l.warehouseId === 2)).toBeUndefined();
+    expect(result.fulfilled).to.equal(true);
+    expect(result.allocations.find((l) => l.warehouseId === 2)).to.equal(undefined);
     for (const line of result.allocations) {
       const warehouse = warehouses.find((w) => w.warehouseId === line.warehouseId)!;
-      expect(line.quantity).toBeLessThanOrEqual(warehouse.stock);
+      expect(line.quantity).to.be.at.most(warehouse.stock);
     }
   });
 
@@ -194,7 +162,7 @@ describe("allocateOrder", () => {
       (sum, line) => sum + calculateShippingCost(line.distanceKm, line.quantity, 0.365, 1),
       0
     );
-    expect(result.totalShippingCostCents).toBe(expectedTotal);
+    expect(result.totalShippingCostCents).to.equal(expectedTotal);
   });
 
   it("does not mutate the warehouses passed in", () => {
@@ -203,6 +171,6 @@ describe("allocateOrder", () => {
 
     allocateOrder(50, DESTINATION, warehouses, WEIGHT_KG, RATE);
 
-    expect(warehouses).toEqual(snapshot);
+    expect(warehouses).to.deep.equal(snapshot);
   });
 });

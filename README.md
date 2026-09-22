@@ -59,16 +59,18 @@ npm start
 
 ## Test
 
-Requires Postgres running (`npm run db:up`) — every test here, unit and integration, exercises the
-real `orders_test` database.
-
 ```bash
-npm test            # test:unit, then test:api
-npm run test:unit    # src/**/*.test.ts — co-located unit/service/repository/middleware tests
-npm run test:api     # tests/integration/**/*.test.ts — full HTTP requests against all 3 endpoints
+npm test              # test:unit, then test:api
+npm run test:unit      # mocha — src/**/*.test.ts, co-located unit/service/repository/middleware tests
+npm run test:api        # vitest — tests/integration/**/*.test.ts, full HTTP requests against all 3 endpoints
 npm run test:watch
-npm run coverage     # full suite, with a v8 coverage report over src/
+npm run coverage         # coverage:unit (c8 + mocha), then coverage:api (vitest --coverage)
 ```
+
+`test:unit` (mocha + chai + sinon) never touches a real database — every repository/service/
+infrastructure test injects a fake `QueryExecutor` or stubs `getPool`/`pg.Pool` with sinon instead.
+Only `test:api` (vitest) exercises the real `orders_test` database, so `npm run db:up` only needs
+to be running before that one.
 
 CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint`, `build`, `test:unit`, and `test:api` (as
 separate steps, for clearer failure visibility) on every push and pull request, against a

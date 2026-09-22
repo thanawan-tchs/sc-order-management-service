@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { expect } from "chai";
 import Koa from "koa";
 import Router from "@koa/router";
 import bodyParser from "koa-bodyparser";
@@ -33,8 +33,8 @@ describe("validateBody middleware", () => {
 
     const response = await request(app.callback()).post("/test").send({ quantity: 10 });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ received: { quantity: 10 } });
+    expect(response.status).to.equal(200);
+    expect(response.body).to.deep.equal({ received: { quantity: 10 } });
   });
 
   it("throws a ValidationError that the central error handler turns into 400 INVALID_QUANTITY", async () => {
@@ -42,9 +42,9 @@ describe("validateBody middleware", () => {
 
     const response = await request(app.callback()).post("/test").send({ quantity: -1 });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("INVALID_QUANTITY");
-    expect(typeof response.body.error.message).toBe("string");
+    expect(response.status).to.equal(400);
+    expect(response.body.error.code).to.equal("INVALID_QUANTITY");
+    expect(typeof response.body.error.message).to.equal("string");
   });
 
   it("never calls the downstream handler when validation fails", async () => {
@@ -63,7 +63,7 @@ describe("validateBody middleware", () => {
 
     await request(app.callback()).post("/test").send({ quantity: "not-a-number" });
 
-    expect(handlerCalled).toBe(false);
+    expect(handlerCalled).to.equal(false);
   });
 });
 
@@ -92,8 +92,8 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
       .post("/test")
       .send({ itemId: "not-a-uuid", quantity: 10, shippingAddress: validAddress });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("INVALID_ITEM_ID");
+    expect(response.status).to.equal(400);
+    expect(response.body.error.code).to.equal("INVALID_ITEM_ID");
   });
 
   it("maps an invalid quantity to INVALID_QUANTITY", async () => {
@@ -101,8 +101,8 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
       .post("/test")
       .send({ itemId: VALID_ITEM_ID, quantity: -1, shippingAddress: validAddress });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("INVALID_QUANTITY");
+    expect(response.status).to.equal(400);
+    expect(response.body.error.code).to.equal("INVALID_QUANTITY");
   });
 
   it("maps an invalid latitude to INVALID_LATITUDE", async () => {
@@ -110,8 +110,8 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
       .post("/test")
       .send({ itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: { latitude: 999, longitude: -74.006 } });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("INVALID_LATITUDE");
+    expect(response.status).to.equal(400);
+    expect(response.body.error.code).to.equal("INVALID_LATITUDE");
   });
 
   it("maps an invalid longitude to INVALID_LONGITUDE", async () => {
@@ -119,8 +119,8 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
       .post("/test")
       .send({ itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: { latitude: 40.7128, longitude: 999 } });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("INVALID_LONGITUDE");
+    expect(response.status).to.equal(400);
+    expect(response.body.error.code).to.equal("INVALID_LONGITUDE");
   });
 
   it("maps anything else (e.g. a missing shippingAddress) to the generic VALIDATION_ERROR fallback", async () => {
@@ -128,8 +128,8 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
       .post("/test")
       .send({ itemId: VALID_ITEM_ID, quantity: 10 });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(response.status).to.equal(400);
+    expect(response.body.error.code).to.equal("VALIDATION_ERROR");
   });
 
   it("passes a fully valid request through untouched", async () => {
@@ -137,8 +137,8 @@ describe("validateBody field-to-code mapping (ticket 15, against the real order 
       .post("/test")
       .send({ itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: validAddress });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
+    expect(response.status).to.equal(200);
+    expect(response.body).to.deep.equal({
       received: { itemId: VALID_ITEM_ID, quantity: 10, shippingAddress: validAddress },
     });
   });

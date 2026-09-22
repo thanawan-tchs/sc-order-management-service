@@ -1,119 +1,154 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { expect } from "chai";
+import sinon from "sinon";
 import { SEED_WAREHOUSES } from "../config";
 import { InsufficientStockError } from "../domain/errors";
-import { closePool, getPool } from "../infrastructure/db/pool";
+import { QueryExecutor } from "../infrastructure/db/pool";
 import * as warehouseRepository from "./warehouseRepository";
-import { resetTestDb } from "../../tests/helpers/db";
+
+function fakeExecutor(query: sinon.SinonStub): QueryExecutor {
+  return { query } as unknown as QueryExecutor;
+}
 
 const LOS_ANGELES_ID = 1;
 const LOS_ANGELES_STOCK = SEED_WAREHOUSES[0].stock;
+const ITEM_ID = "11111111-1111-1111-1111-111111111111";
 const NONEXISTENT_ITEM_ID = "00000000-0000-0000-0000-000000000000";
 
-let itemId: string;
-
-beforeEach(async () => {
-  itemId = await resetTestDb();
-});
-
-afterAll(async () => {
-  await closePool();
-});
+const WAREHOUSE_ROWS = SEED_WAREHOUSES.map((w, index) => ({
+  id: index + 1,
+  name: w.name,
+  latitude: w.latitude,
+  longitude: w.longitude,
+}));
 
 describe("getAllWarehouses", () => {
-  it("retrieves all six seeded warehouses", async () => {
-    const warehouses = await warehouseRepository.getAllWarehouses();
+  it("retrieves and maps every warehouse row", async () => {
+    const query = sinon.stub().resolves({ rows: WAREHOUSE_ROWS, rowCount: WAREHOUSE_ROWS.length });
 
-    expect(warehouses).toHaveLength(6);
-    expect(warehouses.map((w) => w.name).sort()).toEqual(
-      [...SEED_WAREHOUSES.map((w) => w.name)].sort()
-    );
+    const warehouses = await warehouseRepository.getAllWarehouses(fakeExecutor(query));
+
+    expect(query.calledWith("SELECT id, name, latitude, longitude FROM warehouses ORDER BY id")).to.equal(true);
+    expect(warehouses).to.have.lengthOf(6);
+    expect(warehouses.map((w) => w.name).sort()).to.deep.equal([...SEED_WAREHOUSES.map((w) => w.name)].sort());
 
     const losAngeles = warehouses.find((w) => w.id === LOS_ANGELES_ID);
-    expect(losAngeles).toMatchObject({
-      name: "Los Angeles",
-      latitude: 33.9425,
-      longitude: -118.408056,
-    });
+    expect(losAngeles).to.deep.include({ name: "Los Angeles", latitude: 33.9425, longitude: -118.408056 });
   });
 });
 
 describe("getWarehouse", () => {
   it("retrieves a single warehouse by id", async () => {
-    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID);
-    expect(warehouse?.name).toBe("Los Angeles");
+    const query = sinon.stub().resolves({ rows: [WAREHOUSE_ROWS[0]], rowCount: 1 });
+
+    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID, fakeExecutor(query));
+
+    expect(query.calledWith("SELECT id, name, latitude, longitude FROM warehouses WHERE id = $1", [LOS_ANGELES_ID])).to
+      .equal(true);
+    expect(warehouse?.name).to.equal("Los Angeles");
   });
 
   it("returns undefined for an unknown id", async () => {
-    const warehouse = await warehouseRepository.getWarehouse(999);
-    expect(warehouse).toBeUndefined();
+    const query = sinon.stub().resolves({ rows: [], rowCount: 0 });
+
+    const warehouse = await warehouseRepository.getWarehouse(999, fakeExecutor(query));
+
+    expect(warehouse).to.equal(undefined);
   });
 });
 
 describe("getInventory", () => {
-  it("returns stock matching the seed data", async () => {
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
-    expect(inventory).toMatchObject({ warehouseId: LOS_ANGELES_ID, itemId, stock: LOS_ANGELES_STOCK });
-  });
+  it("returns stock, mapping item_id to the domain field name", async () => {
+    const query = sinon
+      .stub()
+      .resolves({ rows: [{ warehouse_id: LOS_ANGELES_ID, item_id: ITEM_ID, stock: LOS_ANGELES_STOCK }], rowCount: 1 });
 
-  it("returns undefined for a warehouse with no inventory row", async () => {
-    const inventory = await warehouseRepository.getInventory(999, itemId);
-    expect(inventory).toBeUndefined();
+    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, ITEM_ID, fakeExecutor(query));
+
+    expect(
+      query.calledWith("SELECT warehouse_id, item_id, stock FROM inventory WHERE warehouse_id = $1 AND item_id = $2", [
+        LOS_ANGELES_ID,
+        ITEM_ID,
+      ])
+    ).to.equal(true);
+    expect(inventory).to.deep.equal({ warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: LOS_ANGELES_STOCK });
   });
 
   it("returns undefined for a warehouse/item pair with no inventory row", async () => {
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, NONEXISTENT_ITEM_ID);
-    expect(inventory).toBeUndefined();
+    const query = sinon.stub().resolves({ rows: [], rowCount: 0 });
+
+    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, NONEXISTENT_ITEM_ID, fakeExecutor(query));
+
+    expect(inventory).to.equal(undefined);
   });
 });
 
 describe("decrementInventory", () => {
-  it("deducts a valid quantity", async () => {
-    await warehouseRepository.decrementInventory(LOS_ANGELES_ID, itemId, 100);
+  it("sends the guarded UPDATE with quantity/warehouseId/itemId, in that parameter order", async () => {
+    const query = sinon.stub().resolves({ rowCount: 1 });
 
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
-    expect(inventory?.stock).toBe(LOS_ANGELES_STOCK - 100);
+    await warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 100, fakeExecutor(query));
+
+    expect(
+      query.calledWith(
+        "UPDATE inventory SET stock = stock - $1 WHERE warehouse_id = $2 AND item_id = $3 AND stock >= $1",
+        [100, LOS_ANGELES_ID, ITEM_ID]
+      )
+    ).to.equal(true);
   });
 
-  it("rejects a deduction larger than available stock, leaving stock unchanged", async () => {
-    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, itemId, LOS_ANGELES_STOCK + 1)).rejects.toBeInstanceOf(
+  it("throws InsufficientStockError when the guarded UPDATE affects zero rows (insufficient stock)", async () => {
+    const query = sinon.stub().resolves({ rowCount: 0 });
+
+    await expect(
+      warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, LOS_ANGELES_STOCK + 1, fakeExecutor(query))
+    ).to.be.rejectedWith(InsufficientStockError);
+  });
+
+  it("throws InsufficientStockError for a nonexistent warehouse or item (same zero-row-affected signal)", async () => {
+    const query = sinon.stub().resolves({ rowCount: 0 });
+
+    await expect(warehouseRepository.decrementInventory(999, ITEM_ID, 1, fakeExecutor(query))).to.be.rejectedWith(
       InsufficientStockError
     );
-
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
-    expect(inventory?.stock).toBe(LOS_ANGELES_STOCK);
   });
 
-  it("rejects deducting from a nonexistent warehouse", async () => {
-    await expect(warehouseRepository.decrementInventory(999, itemId, 1)).rejects.toBeInstanceOf(InsufficientStockError);
-  });
+  it("rejects a non-positive or non-integer quantity before ever querying", async () => {
+    const query = sinon.stub().resolves({ rowCount: 1 });
 
-  it("rejects deducting a nonexistent item at a real warehouse", async () => {
-    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, NONEXISTENT_ITEM_ID, 1)).rejects.toBeInstanceOf(
-      InsufficientStockError
-    );
+    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 0, fakeExecutor(query))).to.be
+      .rejected;
+    await expect(warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 1.5, fakeExecutor(query))).to.be
+      .rejected;
+    expect(query.called).to.equal(false);
   });
 
   it("never lets concurrent deductions oversell stock", async () => {
-    await getPool().query("UPDATE inventory SET stock = 10 WHERE warehouse_id = $1 AND item_id = $2", [
-      LOS_ANGELES_ID,
-      itemId,
-    ]);
+    let stock = 10;
+    const query = sinon.stub().callsFake(async (_sql: string, params: unknown[]) => {
+      const [quantity] = params as [number];
+      if (stock >= quantity) {
+        stock -= quantity;
+        return { rowCount: 1 };
+      }
+      return { rowCount: 0 };
+    });
+    const executor = fakeExecutor(query);
 
-    const attempts = Array.from({ length: 15 }, () => warehouseRepository.decrementInventory(LOS_ANGELES_ID, itemId, 1));
+    const attempts = Array.from({ length: 15 }, () =>
+      warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, 1, executor)
+    );
     const results = await Promise.allSettled(attempts);
 
     const succeeded = results.filter((r) => r.status === "fulfilled");
     const failed = results.filter((r) => r.status === "rejected");
 
-    expect(succeeded).toHaveLength(10);
-    expect(failed).toHaveLength(5);
+    expect(succeeded).to.have.lengthOf(10);
+    expect(failed).to.have.lengthOf(5);
     for (const failure of failed) {
       if (failure.status === "rejected") {
-        expect(failure.reason).toBeInstanceOf(InsufficientStockError);
+        expect(failure.reason).to.be.instanceOf(InsufficientStockError);
       }
     }
-
-    const inventory = await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId);
-    expect(inventory?.stock).toBe(0);
+    expect(stock).to.equal(0);
   });
 });

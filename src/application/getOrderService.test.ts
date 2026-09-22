@@ -1,17 +1,21 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { expect } from "chai";
+import sinon from "sinon";
 import { getOrder } from "./getOrderService";
 import { toMoney } from "../domain/money";
-import { Item, OrderQuote } from "../domain/types";
-import { closePool } from "../infrastructure/db/pool";
+import { Item, Order } from "../domain/types";
 import * as orderRepository from "../repositories/orderRepository";
-import { resetTestDb } from "../../tests/helpers/db";
 
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 
-let defaultItem: Item;
+const defaultItem: Item = {
+  id: "11111111-1111-1111-1111-111111111111",
+  name: "Standard Unit",
+  priceCents: toMoney(15000),
+  weightKg: 0.365,
+};
 
-function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
+function buildOrder(overrides: Partial<Order> = {}): Order {
   return {
     quantity: 10,
     item: defaultItem,
@@ -28,73 +32,68 @@ function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
     allocations: [
       { warehouseId: LOS_ANGELES_ID, quantity: 10, distanceKm: 1234.5, shippingCostCents: toMoney(500) },
     ],
+    orderNumber: "ORD-0000001",
+    status: "CONFIRMED",
+    createdAt: new Date("2024-01-01T00:00:00.000Z").toISOString(),
     ...overrides,
   };
 }
 
-beforeEach(async () => {
-  const itemId = await resetTestDb();
-  defaultItem = { id: itemId, name: "Standard Unit", priceCents: toMoney(15000), weightKg: 0.365 };
-});
-
-afterAll(async () => {
-  await closePool();
-});
-
 describe("getOrder", () => {
-  it("returns the persisted order for an existing order number", async () => {
-    const created = await orderRepository.createOrder(buildQuote());
+  afterEach(() => {
+    sinon.restore();
+  });
 
-    const found = await getOrder(created.orderNumber);
+  it("returns exactly what the repository returns for an existing order number", async () => {
+    const order = buildOrder();
+    const stub = sinon.stub(orderRepository, "getOrderByNumber").resolves(order);
 
-    expect(found).toEqual(created);
+    const found = await getOrder(order.orderNumber);
+
+    expect(found).to.deep.equal(order);
+    expect(stub.calledWith(order.orderNumber)).to.equal(true);
   });
 
   it("returns undefined for an unknown order number", async () => {
-    expect(await getOrder("ORD-9999999")).toBeUndefined();
+    sinon.stub(orderRepository, "getOrderByNumber").resolves(undefined);
+
+    expect(await getOrder("ORD-9999999")).to.equal(undefined);
   });
 
-  it("returns a multi-warehouse order's full allocation set", async () => {
-    const created = await orderRepository.createOrder(
-      buildQuote({
-        quantity: 30,
-        allocations: [
-          { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100, shippingCostCents: toMoney(730) },
-          { warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50, shippingCostCents: toMoney(182) },
-        ],
-      })
-    );
+  it("passes through a multi-warehouse order's full allocation set untouched", async () => {
+    const order = buildOrder({
+      quantity: 30,
+      allocations: [
+        { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100, shippingCostCents: toMoney(730) },
+        { warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50, shippingCostCents: toMoney(182) },
+      ],
+    });
+    sinon.stub(orderRepository, "getOrderByNumber").resolves(order);
 
-    const found = await getOrder(created.orderNumber);
+    const found = await getOrder(order.orderNumber);
 
-    expect(found?.allocations).toHaveLength(2);
-    expect(found?.allocations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100 }),
-        expect.objectContaining({ warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50 }),
-      ])
-    );
+    expect(found?.allocations).to.have.lengthOf(2);
+    expect(found?.allocations).to.deep.equal(order.allocations);
   });
 
-  it("returns the exact historical snapshot, even for values today's pricing rules would never produce", async () => {
-    const created = await orderRepository.createOrder(
-      buildQuote({
-        quantity: 10,
-        discountRate: 0.42,
-        discountCents: toMoney(63000),
-        subtotalCents: toMoney(150000),
-        amountAfterDiscountCents: toMoney(87000),
-        shippingCostCents: toMoney(999),
-        totalCents: toMoney(87999),
-      })
-    );
+  it("passes through an exact historical snapshot untouched, even values today's pricing rules would never produce", async () => {
+    const order = buildOrder({
+      quantity: 10,
+      discountRate: 0.42,
+      discountCents: toMoney(63000),
+      subtotalCents: toMoney(150000),
+      amountAfterDiscountCents: toMoney(87000),
+      shippingCostCents: toMoney(999),
+      totalCents: toMoney(87999),
+    });
+    sinon.stub(orderRepository, "getOrderByNumber").resolves(order);
 
-    const found = await getOrder(created.orderNumber);
+    const found = await getOrder(order.orderNumber);
 
-    expect(found?.discountRate).toBe(0.42);
-    expect(found?.discountCents).toBe(63000);
-    expect(found?.amountAfterDiscountCents).toBe(87000);
-    expect(found?.shippingCostCents).toBe(999);
-    expect(found?.totalCents).toBe(87999);
+    expect(found?.discountRate).to.equal(0.42);
+    expect(found?.discountCents).to.equal(63000);
+    expect(found?.amountAfterDiscountCents).to.equal(87000);
+    expect(found?.shippingCostCents).to.equal(999);
+    expect(found?.totalCents).to.equal(87999);
   });
 });

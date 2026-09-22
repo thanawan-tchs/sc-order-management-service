@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { expect } from "chai";
 import Koa, { Context } from "koa";
 import Router from "@koa/router";
 import request from "supertest";
+import sinon from "sinon";
 import { logger } from "../observability/logger";
 import { errorHandler } from "./errorHandler";
 import { requestContext } from "./requestContext";
@@ -21,7 +22,7 @@ function buildApp(handler: (ctx: Context) => void | Promise<void>): Koa {
 
 describe("requestContext middleware", () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    sinon.restore();
   });
 
   it("generates a request ID and echoes it back on the response header", async () => {
@@ -31,8 +32,8 @@ describe("requestContext middleware", () => {
 
     const response = await request(app.callback()).get("/test/1");
 
-    expect(response.headers["x-request-id"]).toBeTruthy();
-    expect(response.headers["x-request-id"]).toMatch(
+    expect(Boolean(response.headers["x-request-id"])).to.equal(true);
+    expect(response.headers["x-request-id"]).to.match(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     );
   });
@@ -45,8 +46,8 @@ describe("requestContext middleware", () => {
 
     const response = await request(app.callback()).get("/test/1").set("X-Request-Id", "client-supplied-id");
 
-    expect(response.headers["x-request-id"]).toBe("client-supplied-id");
-    expect(response.body.requestId).toBe("client-supplied-id");
+    expect(response.headers["x-request-id"]).to.equal("client-supplied-id");
+    expect(response.body.requestId).to.equal("client-supplied-id");
   });
 
   it("attaches a child logger at ctx.state.log, usable by downstream handlers", async () => {
@@ -57,50 +58,48 @@ describe("requestContext middleware", () => {
 
     const response = await request(app.callback()).get("/test/1");
 
-    expect(response.body).toEqual({ hasLogger: true });
+    expect(response.body).to.deep.equal({ hasLogger: true });
   });
 
   it("logs exactly one structured completion line, with the matched route pattern (not the literal path)", async () => {
-    const infoSpy = vi.spyOn(logger, "child").mockReturnValue(
-      Object.assign(Object.create(logger), { info: vi.fn(), error: vi.fn() })
-    );
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
     const app = buildApp((ctx) => {
       ctx.status = 200;
     });
 
     await request(app.callback()).get("/test/12345");
 
-    const childLogger = infoSpy.mock.results[0]?.value;
-    expect(childLogger.info).toHaveBeenCalledTimes(1);
-    const [fields, message] = childLogger.info.mock.calls[0];
-    expect(message).toBe("request completed");
-    expect(fields.operation).toBe("GET /test/:id"); // pattern, not "/test/12345"
-    expect(fields.status).toBe(200);
-    expect(typeof fields.duration).toBe("number");
+    expect(childLogger.info.callCount).to.equal(1);
+    const [fields, message] = childLogger.info.firstCall.args;
+    expect(message).to.equal("request completed");
+    expect(fields.operation).to.equal("GET /test/:id"); // pattern, not "/test/12345"
+    expect(fields.status).to.equal(200);
+    expect(typeof fields.duration).to.equal("number");
   });
 
   it("logs completion at error level (not info) for a 5xx response, including the errorCode", async () => {
-    const errorFn = vi.fn();
-    vi.spyOn(logger, "child").mockReturnValue(
-      Object.assign(Object.create(logger), { info: vi.fn(), error: errorFn })
-    );
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
     const app = buildApp(() => {
       throw new Error("boom");
     });
 
     await request(app.callback()).get("/test/1");
 
-    expect(errorFn).toHaveBeenCalledTimes(2);
-    const completionCall = errorFn.mock.calls.find(([, message]) => message === "request completed");
-    expect(completionCall).toBeDefined();
-    const [fields] = completionCall!;
-    expect(fields.status).toBe(500);
-    expect(fields.errorCode).toBe("INTERNAL_SERVER_ERROR");
+    expect(childLogger.error.callCount).to.equal(2);
+    const completionCall = childLogger.error
+      .getCalls()
+      .find((call) => call.args[1] === "request completed");
+    expect(completionCall).to.not.equal(undefined);
+    const [fields] = completionCall!.args;
+    expect(fields.status).to.equal(500);
+    expect(fields.errorCode).to.equal("INTERNAL_SERVER_ERROR");
   });
 
   it("includes orderNumber in the completion log when a handler sets ctx.state.orderNumber", async () => {
-    const infoFn = vi.fn();
-    vi.spyOn(logger, "child").mockReturnValue(Object.assign(Object.create(logger), { info: infoFn, error: vi.fn() }));
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
     const app = buildApp((ctx) => {
       ctx.state.orderNumber = "ORD-0000042";
       ctx.status = 201;
@@ -108,22 +107,21 @@ describe("requestContext middleware", () => {
 
     await request(app.callback()).get("/test/1");
 
-    const [fields] = infoFn.mock.calls[0];
-    expect(fields.orderNumber).toBe("ORD-0000042");
+    const [fields] = childLogger.info.firstCall.args;
+    expect(fields.orderNumber).to.equal("ORD-0000042");
   });
 
   it("still logs completion (in a finally) even when the handler throws", async () => {
-    const infoFn = vi.fn();
-    const errorFn = vi.fn();
-    vi.spyOn(logger, "child").mockReturnValue(Object.assign(Object.create(logger), { info: infoFn, error: errorFn }));
+    const childLogger = { info: sinon.stub(), error: sinon.stub() };
+    sinon.stub(logger, "child").returns(Object.assign(Object.create(logger), childLogger));
     const app = buildApp(() => {
       throw new Error("boom");
     });
 
     await request(app.callback()).get("/test/1");
 
-    expect(infoFn).not.toHaveBeenCalled();
-    expect(errorFn).toHaveBeenCalledTimes(2);
-    expect(errorFn.mock.calls.some(([, message]) => message === "request completed")).toBe(true);
+    expect(childLogger.info.called).to.equal(false);
+    expect(childLogger.error.callCount).to.equal(2);
+    expect(childLogger.error.getCalls().some((call) => call.args[1] === "request completed")).to.equal(true);
   });
 });

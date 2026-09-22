@@ -24,23 +24,29 @@ npm run dev             # dev server with auto-reload (tsx watch)
 npm run build            # tsc -p tsconfig.build.json -> dist/
 npm start                 # node dist/server.js
 
-npm test                  # test:unit then test:api (requires npm run db:up first)
-npm run test:unit          # vitest run src            — co-located unit/service/repository/middleware tests
+npm test                  # test:unit then test:api (test:api requires npm run db:up first)
+npm run test:unit          # mocha                    — co-located unit/service/repository/middleware tests
 npm run test:api            # vitest run tests/integration — full HTTP integration tests
-npm run test:watch
-npm run coverage             # full suite with v8 coverage report over src/
+npm run test:watch          # mocha --watch (unit tests only)
+npm run coverage             # coverage:unit (c8 + mocha) then coverage:api (vitest --coverage)
 
 npm run lint
 npm run typecheck
 ```
 
-Run a single test file: `npx vitest run src/domain/pricing.test.ts`. Run by name:
-`npx vitest run -t "insufficient stock"`.
+Run a single unit test file: `npx mocha src/domain/pricing.test.ts`. Run by name:
+`npx mocha --grep "insufficient stock"`. Run a single integration test file:
+`npx vitest run tests/integration/orderQuote.api.test.ts`.
 
-Every test — unit and integration — hits the real Postgres `orders_test` database (no mocked DB
-layer); `npm run db:up` must be running first. CI (`.github/workflows/ci.yml`) runs `typecheck`,
-`lint`, `build`, `test:unit`, `test:api` as separate steps against a `postgres:16-alpine` service
-container.
+**Unit tests (`npm run test:unit`, mocha + chai + sinon) never touch a real database** — every
+repository/service/infrastructure test injects a fake `QueryExecutor` (or stubs `getPool`/`pg.Pool`
+directly via sinon) rather than hitting Postgres; see `.mocharc.json` (loader: `ts-node/register`
+— NOT `tsx`, whose esbuild-based CJS output makes exports non-configurable and unstubbable by
+sinon) and `tests/mochaSetup.ts` (registers `chai-as-promised`). **Only `test:api` (vitest,
+`tests/integration/`) hits the real Postgres `orders_test` database**; `npm run db:up` must be
+running first for that suite. CI (`.github/workflows/ci.yml`) runs `typecheck`, `lint`, `build`,
+`test:unit`, `test:api` as separate steps, with a `postgres:16-alpine` service container available
+for `test:api`.
 
 ## Architecture
 
@@ -130,3 +136,9 @@ inline logic in `server.ts`, specifically so it's unit-testable without a real s
 - Tests asserting on a genuine database race (two concurrent requests for the same stock/key)
   assert the *outcome* (final stock, exactly one order/claim), not which of two valid code paths
   produced it — the timing is nondeterministic by design.
+
+
+# Code Style Guidelines
+- **Do not add code comments** (no `//`, `#`, or block comments) unless explicitly requested.
+- Code must be self-documenting with clear, expressive variable and function names.
+- If you must modify code, strip out any conversational or explanatory comments you introduce.

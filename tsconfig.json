@@ -16,7 +16,8 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "types": ["node", "mocha"]
   },
   "include": ["src", "tests"],
   "exclude": ["node_modules", "dist"]

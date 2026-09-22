@@ -1,6 +1,6 @@
 import { Context } from "koa";
 import { getOrderQuote } from "../application/orders/orderQuoteService";
-import { OrderQuote } from "../domain/types";
+import { OrderQuote } from "../domain/model/order";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
 
 interface QuoteResponseBody {

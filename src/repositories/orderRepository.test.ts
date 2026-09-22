@@ -2,7 +2,8 @@ import { expect } from "chai";
 import sinon from "sinon";
 import { IdempotencyKeyConflictError } from "../domain/errors";
 import { toMoney } from "../domain/money";
-import { Item, OrderQuote } from "../domain/types";
+import { Item } from "../domain/model/item";
+import { OrderQuote } from "../domain/model/order";
 import { QueryExecutor } from "../infrastructure/db/pool";
 import * as orderRepository from "./orderRepository";
 

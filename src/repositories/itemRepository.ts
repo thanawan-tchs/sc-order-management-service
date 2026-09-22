@@ -1,5 +1,5 @@
 import { Money, toMoney } from "../domain/money";
-import { Item } from "../domain/types";
+import { Item } from "../domain/model/item";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
 
 interface ItemRow {

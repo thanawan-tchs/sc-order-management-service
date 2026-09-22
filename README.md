@@ -139,8 +139,10 @@ lives here.
 - `internal/readinessService` (ticket 17) — the `GET /ready` database check, injectable so it's
   unit-testable without a live database.
 
-**`domain/`** — core types (`Item`, `Warehouse`, `Inventory`, `OrderQuote`, `Order`, `Money`, ...),
-request validation schemas (zod, incl. `itemId: z.string().uuid()`), `errors.ts` (every `AppError`
+**`domain/`** — `model/` holds the core types split by category (`item.ts`: `Item`; `warehouse.ts`:
+`Warehouse`, `Inventory`; `shipping.ts`: `ShippingAddress`, `ShippingAllocation`; `order.ts`:
+`OrderQuote`, `OrderStatus`, `Order`) plus `Money` (`money.ts`), request validation schemas (zod,
+incl. `itemId: z.string().uuid()`), `errors.ts` (every `AppError`
 subclass — `ValidationError`, `OrderSubmissionError`, `InsufficientStockError`,
 `IdempotencyKeyReusedError`, `OrderNotFoundError`, `ItemNotFoundError` — each carrying its own HTTP
 status + error code, ticket 15), `pricing.ts` (subtotal/discount),

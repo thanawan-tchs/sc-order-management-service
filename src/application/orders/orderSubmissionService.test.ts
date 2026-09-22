@@ -8,7 +8,8 @@ import {
   OrderSubmissionError,
 } from "../../domain/errors";
 import { toMoney } from "../../domain/money";
-import { Item, Order } from "../../domain/types";
+import { Item } from "../../domain/model/item";
+import { Order } from "../../domain/model/order";
 import * as poolModule from "../../infrastructure/db/pool";
 import * as itemRepository from "../../repositories/itemRepository";
 import * as orderRepository from "../../repositories/orderRepository";

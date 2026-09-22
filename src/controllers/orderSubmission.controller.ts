@@ -1,6 +1,6 @@
 import { Context } from "koa";
 import * as orderSubmissionService from "../application/orders/orderSubmissionService";
-import { Order } from "../domain/types";
+import { Order } from "../domain/model/order";
 import { OrderRequestInput } from "../domain/validation/orderRequest.schema";
 
 interface OrderResponseBody {

@@ -62,12 +62,15 @@ routes/ -> controllers/ -> application/ (services) -> repositories/ -> infrastru
                               domain/ (pure functions/types, no I/O)
 ```
 
-- **`domain/`** — pure, side-effect-free business logic and types: `pricing.ts` (subtotal/volume
-  discount), `distance.ts` (Haversine), `shipping.ts` (per-allocation cost), `allocation.ts`
-  (greedy lowest-cost-first multi-warehouse fulfillment), `validity.ts` (the 15%
-  shipping-cost-vs-order-value rule), `money.ts` (`Money` — a branded integer-cents type; never use
-  raw floats for currency), `errors.ts` (every `AppError` subclass), `validation/` (zod request
-  schemas).
+- **`domain/`** — pure, side-effect-free business logic and types: `model/` holds the types split
+  by category (`item.ts`: `Item`; `warehouse.ts`: `Warehouse`, `Inventory`; `shipping.ts`:
+  `ShippingAddress`, `ShippingAllocation`; `order.ts`: `OrderQuote`, `OrderStatus`, `Order`) —
+  distinct from the top-level `domain/shipping.ts` below, which holds shipping *functions*, not
+  types. `pricing.ts` (subtotal/volume discount), `distance.ts` (Haversine), `shipping.ts`
+  (per-allocation cost), `allocation.ts` (greedy lowest-cost-first multi-warehouse fulfillment),
+  `validity.ts` (the 15% shipping-cost-vs-order-value rule), `money.ts` (`Money` — a branded
+  integer-cents type; never use raw floats for currency), `errors.ts` (every `AppError` subclass),
+  `validation/` (zod request schemas).
 - **`application/`** — orchestrates domain + repositories, grouped into `items/` (`itemService`),
   `orders/` (`orderQuoteService`, `orderSubmissionService`, `getOrderService`), and `internal/`
   (`readinessService`). `orderQuoteService` (read stock -> price -> allocate -> check validity ->

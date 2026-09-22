@@ -1,7 +1,7 @@
 import { calculateDistanceKm } from "./distance";
 import { Money } from "./money";
 import { calculateShippingCost, sumShippingCosts } from "./shipping";
-import { ShippingAddress, ShippingAllocation } from "./types";
+import { ShippingAddress, ShippingAllocation } from "./model/shipping";
 
 export interface WarehouseCandidate {
   warehouseId: number;

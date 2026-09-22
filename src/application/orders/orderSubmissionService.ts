@@ -1,5 +1,6 @@
 import { IdempotencyKeyConflictError, IdempotencyKeyReusedError, OrderSubmissionError } from "../../domain/errors";
-import { Order, ShippingAddress } from "../../domain/types";
+import { Order } from "../../domain/model/order";
+import { ShippingAddress } from "../../domain/model/shipping";
 import { QueryExecutor } from "../../infrastructure/db/pool";
 import { withTransaction } from "../../infrastructure/db/transaction";
 import * as itemRepository from "../../repositories/itemRepository";

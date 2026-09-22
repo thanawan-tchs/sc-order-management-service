@@ -1,7 +1,8 @@
 import { CURRENCY } from "../config";
 import { IdempotencyKeyConflictError } from "../domain/errors";
 import { toMoney } from "../domain/money";
-import { Order, OrderQuote, OrderStatus, ShippingAllocation } from "../domain/types";
+import { Order, OrderQuote, OrderStatus } from "../domain/model/order";
+import { ShippingAllocation } from "../domain/model/shipping";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
 
 const POSTGRES_UNIQUE_VIOLATION = "23505";

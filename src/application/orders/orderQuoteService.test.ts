@@ -3,7 +3,7 @@ import { getOrderQuote, OrderQuoteDependencies } from "./orderQuoteService";
 import { WarehouseCandidate } from "../../domain/allocation";
 import { ItemNotFoundError } from "../../domain/errors";
 import { toMoney } from "../../domain/money";
-import { Item } from "../../domain/types";
+import { Item } from "../../domain/model/item";
 import { pointAtDistanceFromOrigin } from "../../../tests/helpers/geo";
 
 const DESTINATION = { latitude: 0, longitude: 0 };

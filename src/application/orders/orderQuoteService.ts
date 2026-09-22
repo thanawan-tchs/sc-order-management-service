@@ -8,7 +8,9 @@ import {
   calculateSubtotal,
   getDiscountRate,
 } from "../../domain/pricing";
-import { Item, OrderQuote, ShippingAddress } from "../../domain/types";
+import { Item } from "../../domain/model/item";
+import { OrderQuote } from "../../domain/model/order";
+import { ShippingAddress } from "../../domain/model/shipping";
 import { InvalidOrderReason, isShippingCostWithinLimit } from "../../domain/validity";
 import { QueryExecutor, getPool } from "../../infrastructure/db/pool";
 import * as itemRepository from "../../repositories/itemRepository";

@@ -3,7 +3,7 @@ import { z } from "zod";
 import * as itemService from "../application/items/itemService";
 import { ItemNotFoundError, ValidationError } from "../domain/errors";
 import { toMoney } from "../domain/money";
-import { Item } from "../domain/types";
+import { Item } from "../domain/model/item";
 import { ItemRequestInput } from "../domain/validation/itemRequest.schema";
 
 interface ItemResponseBody {

@@ -1,5 +1,5 @@
 import { InsufficientStockError } from "../domain/errors";
-import { Inventory, Warehouse } from "../domain/types";
+import { Inventory, Warehouse } from "../domain/model/warehouse";
 import { QueryExecutor, getPool } from "../infrastructure/db/pool";
 
 interface WarehouseRow {

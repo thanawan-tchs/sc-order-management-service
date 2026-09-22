@@ -1,4 +1,4 @@
-import { Item } from "../../domain/types";
+import { Item } from "../../domain/model/item";
 import * as itemRepository from "../../repositories/itemRepository";
 
 export async function createItem(input: itemRepository.CreateItemInput): Promise<Item> {

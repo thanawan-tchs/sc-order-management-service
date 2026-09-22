@@ -27,10 +27,10 @@ function toValidationError(issues: ZodIssue[]): ValidationError {
   if (path === "name") {
     return new ValidationError("INVALID_ITEM_NAME", "name is required and must be a non-empty string.");
   }
-  if (path === "priceCents") {
+  if (path === "price") {
     return new ValidationError(
-      "INVALID_PRICE_CENTS",
-      "priceCents is required and must be a positive integer."
+      "INVALID_PRICE",
+      "price is required and must be a positive integer."
     );
   }
   if (path === "weightKg") {

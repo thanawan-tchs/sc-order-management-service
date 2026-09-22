@@ -9,7 +9,8 @@ export const migration_0003_order_allocations: Migration = {
       warehouse_id    INTEGER NOT NULL REFERENCES warehouses (id),
       quantity        INTEGER NOT NULL CHECK (quantity > 0),
       distance_km     DOUBLE PRECISION NOT NULL,
-      shipping_cents  INTEGER NOT NULL
+      shipping        INTEGER NOT NULL,
+      currency        TEXT NOT NULL
     )`,
     `CREATE INDEX IF NOT EXISTS idx_order_allocations_order_id ON order_allocations (order_id)`,
   ],

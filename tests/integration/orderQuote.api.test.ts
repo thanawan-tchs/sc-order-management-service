@@ -30,16 +30,16 @@ describe("POST /v1/orders/quote", () => {
     expect(response.status).toBe(200);
 
     expect(response.body.quantity).toBe(50);
-    expect(response.body.pricing.subtotalCents).toBe(750000);
+    expect(response.body.pricing.subtotal).toBe(750000);
     expect(response.body.pricing.discountRate).toBe(0.1);
-    expect(response.body.pricing.discountCents).toBe(75000);
-    expect(response.body.pricing.amountAfterDiscountCents).toBe(675000);
+    expect(response.body.pricing.discount).toBe(75000);
+    expect(response.body.pricing.amountAfterDiscount).toBe(675000);
     expect(response.body.shipping.totalWeightKg).toBe(18.25);
 
-    expect(response.body.pricing.totalCents).toBe(
-      response.body.pricing.amountAfterDiscountCents + response.body.pricing.shippingCents
+    expect(response.body.pricing.total).toBe(
+      response.body.pricing.amountAfterDiscount + response.body.pricing.shippingCost
     );
-    expect(response.body.pricing.shippingCents).toBeGreaterThan(0);
+    expect(response.body.pricing.shippingCost).toBeGreaterThan(0);
     expect(response.body.shipping.allocations).toHaveLength(1);
     expect(response.body.shipping.allocations[0].distanceKm).toBeGreaterThan(10);
     expect(response.body.shipping.allocations[0].distanceKm).toBeLessThan(40);

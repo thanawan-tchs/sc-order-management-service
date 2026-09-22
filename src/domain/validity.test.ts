@@ -21,39 +21,39 @@ describe("isShippingCostWithinLimit", () => {
   });
 
   describe("the exact 15% boundary (inclusive)", () => {
-    const amountAfterDiscountCents = toMoney(10000);
+    const amountAfterDiscount = toMoney(10000);
     const exactlyFifteenPercent = toMoney(1500);
 
     it("is within limit at exactly 15%", () => {
-      expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscountCents)).to.equal(true);
+      expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscount)).to.equal(true);
     });
 
     it("is within limit at one cent under 15%", () => {
-      expect(isShippingCostWithinLimit(toMoney(1499), amountAfterDiscountCents)).to.equal(true);
+      expect(isShippingCostWithinLimit(toMoney(1499), amountAfterDiscount)).to.equal(true);
     });
 
     it("is over limit at one cent over 15%", () => {
-      expect(isShippingCostWithinLimit(toMoney(1501), amountAfterDiscountCents)).to.equal(false);
+      expect(isShippingCostWithinLimit(toMoney(1501), amountAfterDiscount)).to.equal(false);
     });
   });
 
   it("holds exactly at 15% across a range of amounts, not just one convenient fixture", () => {
-    for (const amountAfterDiscountCents of [20, 200, 2000, 20000, 200000, 2000000]) {
-      const exactlyFifteenPercent = Math.round(amountAfterDiscountCents * 0.15);
+    for (const amountAfterDiscount of [20, 200, 2000, 20000, 200000, 2000000]) {
+      const exactlyFifteenPercent = Math.round(amountAfterDiscount * 0.15);
       expect(
-        isShippingCostWithinLimit(toMoney(exactlyFifteenPercent), toMoney(amountAfterDiscountCents))
+        isShippingCostWithinLimit(toMoney(exactlyFifteenPercent), toMoney(amountAfterDiscount))
       ).to.equal(true);
       expect(
-        isShippingCostWithinLimit(toMoney(exactlyFifteenPercent + 1), toMoney(amountAfterDiscountCents))
+        isShippingCostWithinLimit(toMoney(exactlyFifteenPercent + 1), toMoney(amountAfterDiscount))
       ).to.equal(false);
     }
   });
 
   it("is not fooled by 0.15's binary floating-point representation at the boundary", () => {
-    const amountAfterDiscountCents = toMoney(150000);
+    const amountAfterDiscount = toMoney(150000);
     const exactlyFifteenPercent = toMoney(22500);
 
-    expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscountCents)).to.equal(true);
-    expect(isShippingCostWithinLimit(toMoney(22501), amountAfterDiscountCents)).to.equal(false);
+    expect(isShippingCostWithinLimit(exactlyFifteenPercent, amountAfterDiscount)).to.equal(true);
+    expect(isShippingCostWithinLimit(toMoney(22501), amountAfterDiscount)).to.equal(false);
   });
 });

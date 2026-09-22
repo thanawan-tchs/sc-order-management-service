@@ -9,5 +9,6 @@ export interface ShippingAllocation {
   warehouseId: number;
   quantity: number;
   distanceKm: number;
-  shippingCostCents: Money;
+  shippingCost: Money;
+  currency: string;
 }

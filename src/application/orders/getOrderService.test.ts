@@ -12,7 +12,7 @@ const NEW_YORK_ID = 2;
 const defaultItem: Item = {
   id: "11111111-1111-1111-1111-111111111111",
   name: "Standard Unit",
-  priceCents: toMoney(15000),
+  price: toMoney(15000),
   weightKg: 0.365,
 };
 
@@ -21,17 +21,18 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
     quantity: 10,
     item: defaultItem,
     shippingAddress: { latitude: 40.7128, longitude: -74.006 },
-    subtotalCents: toMoney(150000),
+    subtotal: toMoney(150000),
     discountRate: 0,
-    discountCents: toMoney(0),
-    amountAfterDiscountCents: toMoney(150000),
+    discount: toMoney(0),
+    amountAfterDiscount: toMoney(150000),
     totalWeightKg: 3.65,
-    shippingCostCents: toMoney(500),
-    totalCents: toMoney(150500),
+    shippingCost: toMoney(500),
+    total: toMoney(150500),
+    currency: "USD",
     valid: true,
     invalidReasons: [],
     allocations: [
-      { warehouseId: LOS_ANGELES_ID, quantity: 10, distanceKm: 1234.5, shippingCostCents: toMoney(500) },
+      { warehouseId: LOS_ANGELES_ID, quantity: 10, distanceKm: 1234.5, shippingCost: toMoney(500), currency: "USD" },
     ],
     orderNumber: "ORD-0000001",
     status: "CONFIRMED",
@@ -65,8 +66,8 @@ describe("getOrder", () => {
     const order = buildOrder({
       quantity: 30,
       allocations: [
-        { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100, shippingCostCents: toMoney(730) },
-        { warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50, shippingCostCents: toMoney(182) },
+        { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100, shippingCost: toMoney(730), currency: "USD" },
+        { warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50, shippingCost: toMoney(182), currency: "USD" },
       ],
     });
     sinon.stub(orderRepository, "getOrderByNumber").resolves(order);
@@ -81,20 +82,20 @@ describe("getOrder", () => {
     const order = buildOrder({
       quantity: 10,
       discountRate: 0.42,
-      discountCents: toMoney(63000),
-      subtotalCents: toMoney(150000),
-      amountAfterDiscountCents: toMoney(87000),
-      shippingCostCents: toMoney(999),
-      totalCents: toMoney(87999),
+      discount: toMoney(63000),
+      subtotal: toMoney(150000),
+      amountAfterDiscount: toMoney(87000),
+      shippingCost: toMoney(999),
+      total: toMoney(87999),
     });
     sinon.stub(orderRepository, "getOrderByNumber").resolves(order);
 
     const found = await getOrder(order.orderNumber);
 
     expect(found?.discountRate).to.equal(0.42);
-    expect(found?.discountCents).to.equal(63000);
-    expect(found?.amountAfterDiscountCents).to.equal(87000);
-    expect(found?.shippingCostCents).to.equal(999);
-    expect(found?.totalCents).to.equal(87999);
+    expect(found?.discount).to.equal(63000);
+    expect(found?.amountAfterDiscount).to.equal(87000);
+    expect(found?.shippingCost).to.equal(999);
+    expect(found?.total).to.equal(87999);
   });
 });

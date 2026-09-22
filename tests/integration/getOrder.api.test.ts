@@ -120,7 +120,7 @@ describe("GET /v1/orders/:orderNumber", () => {
     expect(submitResponse.status).toBe(201);
 
     await getPool().query(
-      "UPDATE orders SET discount_rate = $1, discount_cents = $2, amount_after_discount_cents = $3 WHERE order_number = $4",
+      "UPDATE orders SET discount_rate = $1, discount = $2, amount_after_discount = $3 WHERE order_number = $4",
       [0.42, 63000, 87000, submitResponse.body.orderNumber]
     );
 
@@ -130,7 +130,7 @@ describe("GET /v1/orders/:orderNumber", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.pricing.discountRate).toBe(0.42);
-    expect(response.body.pricing.discountCents).toBe(63000);
-    expect(response.body.pricing.amountAfterDiscountCents).toBe(87000);
+    expect(response.body.pricing.discount).toBe(63000);
+    expect(response.body.pricing.amountAfterDiscount).toBe(87000);
   });
 });

@@ -5,8 +5,8 @@ export type InvalidOrderReason = "INSUFFICIENT_STOCK" | "SHIPPING_COST_EXCEEDS_1
 export const MAX_SHIPPING_RATIO = 0.15;
 
 export function isShippingCostWithinLimit(
-  shippingCostCents: Money,
-  amountAfterDiscountCents: Money
+  shippingCost: Money,
+  amountAfterDiscount: Money
 ): boolean {
-  return shippingCostCents * 100 <= amountAfterDiscountCents * 15;
+  return shippingCost * 100 <= amountAfterDiscount * 15;
 }

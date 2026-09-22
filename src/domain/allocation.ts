@@ -13,7 +13,7 @@ export interface WarehouseCandidate {
 export interface AllocationResult {
   allocations: ShippingAllocation[];
   fulfilled: boolean;
-  totalShippingCostCents: Money;
+  totalShippingCost: Money;
 }
 
 export function allocateOrder(
@@ -21,17 +21,18 @@ export function allocateOrder(
   destination: ShippingAddress,
   warehouses: WarehouseCandidate[],
   unitWeightKg: number,
-  ratePerKgPerKm: number
+  ratePerKgPerKm: number,
+  currency: string
 ): AllocationResult {
   const candidates = warehouses
     .filter((w) => w.stock > 0)
     .map((w) => {
       const distanceKm = calculateDistanceKm({ latitude: w.latitude, longitude: w.longitude }, destination);
-      const costPerUnitCents = calculateShippingCost(distanceKm, 1, unitWeightKg, ratePerKgPerKm);
-      return { warehouse: w, distanceKm, costPerUnitCents };
+      const costPerUnit = calculateShippingCost(distanceKm, 1, unitWeightKg, ratePerKgPerKm);
+      return { warehouse: w, distanceKm, costPerUnit };
     })
     .sort(
-      (a, b) => a.costPerUnitCents - b.costPerUnitCents || a.warehouse.warehouseId - b.warehouse.warehouseId
+      (a, b) => a.costPerUnit - b.costPerUnit || a.warehouse.warehouseId - b.warehouse.warehouseId
     );
 
   const allocations: ShippingAllocation[] = [];
@@ -47,7 +48,8 @@ export function allocateOrder(
       warehouseId: candidate.warehouse.warehouseId,
       quantity: take,
       distanceKm: candidate.distanceKm,
-      shippingCostCents: calculateShippingCost(candidate.distanceKm, take, unitWeightKg, ratePerKgPerKm),
+      shippingCost: calculateShippingCost(candidate.distanceKm, take, unitWeightKg, ratePerKgPerKm),
+      currency,
     });
 
     remaining -= take;
@@ -56,6 +58,6 @@ export function allocateOrder(
   return {
     allocations,
     fulfilled: remaining === 0,
-    totalShippingCostCents: sumShippingCosts(allocations.map((a) => a.shippingCostCents)),
+    totalShippingCost: sumShippingCosts(allocations.map((a) => a.shippingCost)),
   };
 }

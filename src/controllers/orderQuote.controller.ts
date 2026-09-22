@@ -8,16 +8,17 @@ interface QuoteResponseBody {
   item: {
     id: string;
     name: string;
-    priceCents: number;
+    price: number;
   };
   quantity: number;
   pricing: {
-    subtotalCents: number;
+    subtotal: number;
     discountRate: number;
-    discountCents: number;
-    amountAfterDiscountCents: number;
-    shippingCents: number;
-    totalCents: number;
+    discount: number;
+    amountAfterDiscount: number;
+    shippingCost: number;
+    total: number;
+    currency: string;
   };
   shipping: {
     totalWeightKg: number;
@@ -25,7 +26,8 @@ interface QuoteResponseBody {
       warehouseId: number;
       quantity: number;
       distanceKm: number;
-      shippingCents: number;
+      shippingCost: number;
+      currency: string;
     }[];
   };
   invalidReason: string | null;
@@ -37,16 +39,17 @@ function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
     item: {
       id: quote.item.id,
       name: quote.item.name,
-      priceCents: quote.item.priceCents,
+      price: quote.item.price,
     },
     quantity: quote.quantity,
     pricing: {
-      subtotalCents: quote.subtotalCents,
+      subtotal: quote.subtotal,
       discountRate: quote.discountRate,
-      discountCents: quote.discountCents,
-      amountAfterDiscountCents: quote.amountAfterDiscountCents,
-      shippingCents: quote.shippingCostCents,
-      totalCents: quote.totalCents,
+      discount: quote.discount,
+      amountAfterDiscount: quote.amountAfterDiscount,
+      shippingCost: quote.shippingCost,
+      total: quote.total,
+      currency: quote.currency,
     },
     shipping: {
       totalWeightKg: quote.totalWeightKg,
@@ -54,7 +57,8 @@ function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
         warehouseId: allocation.warehouseId,
         quantity: allocation.quantity,
         distanceKm: allocation.distanceKm,
-        shippingCents: allocation.shippingCostCents,
+        shippingCost: allocation.shippingCost,
+        currency: allocation.currency,
       })),
     },
     invalidReason: quote.invalidReasons[0] ?? null,

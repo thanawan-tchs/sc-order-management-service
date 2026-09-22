@@ -12,8 +12,8 @@ export const DISCOUNT_TIERS: DiscountTier[] = [
   { minQuantity: 25, rate: 0.05 },
 ];
 
-export function calculateSubtotal(quantity: number, unitPriceCents: Money): Money {
-  return toMoney(quantity * unitPriceCents);
+export function calculateSubtotal(quantity: number, unitPrice: Money): Money {
+  return toMoney(quantity * unitPrice);
 }
 
 export function getDiscountRate(quantity: number): number {

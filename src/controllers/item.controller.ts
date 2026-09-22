@@ -9,19 +9,19 @@ import { ItemRequestInput } from "../domain/validation/itemRequest.schema";
 interface ItemResponseBody {
   id: string;
   name: string;
-  priceCents: number;
+  price: number;
   weightKg: number;
 }
 
 function toItemResponse(item: Item): ItemResponseBody {
-  return { id: item.id, name: item.name, priceCents: item.priceCents, weightKg: item.weightKg };
+  return { id: item.id, name: item.name, price: item.price, weightKg: item.weightKg };
 }
 
 export async function createItem(ctx: Context): Promise<void> {
   const input = ctx.state.validated as ItemRequestInput;
   const item = await itemService.createItem({
     name: input.name,
-    priceCents: toMoney(input.priceCents),
+    price: toMoney(input.price),
     weightKg: input.weightKg,
   });
 

@@ -71,13 +71,13 @@ describe("POST /v1/orders", () => {
     expect(response.body.status).toBe("CONFIRMED");
     expect(response.body.quantity).toBe(100);
 
-    expect(response.body.pricing.subtotalCents).toBe(1500000);
+    expect(response.body.pricing.subtotal).toBe(1500000);
     expect(response.body.pricing.discountRate).toBe(0.15);
-    expect(response.body.pricing.discountCents).toBe(225000);
-    expect(response.body.pricing.amountAfterDiscountCents).toBe(1275000);
+    expect(response.body.pricing.discount).toBe(225000);
+    expect(response.body.pricing.amountAfterDiscount).toBe(1275000);
 
-    expect(response.body.pricing.totalCents).toBe(
-      response.body.pricing.amountAfterDiscountCents + response.body.pricing.shippingCents
+    expect(response.body.pricing.total).toBe(
+      response.body.pricing.amountAfterDiscount + response.body.pricing.shippingCost
     );
     expect(response.body.shipping.allocations).toEqual([
       expect.objectContaining({ warehouseId: NEW_YORK_ID, quantity: 100 }),
@@ -165,18 +165,18 @@ describe("POST /v1/orders", () => {
         itemId: itemId,
         quantity: 10,
         shippingAddress: NYC,
-        subtotalCents: 1,
-        discountCents: 999999,
-        shippingCents: 0,
-        totalCents: 1,
+        subtotal: 1,
+        discount: 999999,
+        shippingCost: 0,
+        total: 1,
         valid: false,
-        allocations: [{ warehouseId: 999, quantity: 10, distanceKm: 0, shippingCents: 0 }],
+        allocations: [{ warehouseId: 999, quantity: 10, distanceKm: 0, shippingCost: 0 }],
       });
 
     expect(response.status).toBe(201);
-    expect(response.body.pricing.subtotalCents).toBe(150000);
-    expect(response.body.pricing.discountCents).toBe(0);
-    expect(response.body.pricing.shippingCents).toBeGreaterThan(0);
+    expect(response.body.pricing.subtotal).toBe(150000);
+    expect(response.body.pricing.discount).toBe(0);
+    expect(response.body.pricing.shippingCost).toBeGreaterThan(0);
     expect(response.body.shipping.allocations).toEqual([
       expect.objectContaining({ warehouseId: NEW_YORK_ID, quantity: 10 }),
     ]);

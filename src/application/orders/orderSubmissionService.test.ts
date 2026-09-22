@@ -22,7 +22,7 @@ const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 const SAO_PAULO_ID = 3;
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";
-const ITEM: Item = { id: ITEM_ID, name: "Standard Unit", priceCents: toMoney(15000), weightKg: 0.365 };
+const ITEM: Item = { id: ITEM_ID, name: "Standard Unit", price: toMoney(15000), weightKg: 0.365 };
 
 function warehouseAt(id: number, distanceKm: number, origin: { latitude: number; longitude: number } = DESTINATION) {
   const { latitude, longitude } = pointAtDistanceFrom(origin, distanceKm);
@@ -34,13 +34,14 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
     quantity: 1,
     item: ITEM,
     shippingAddress: DESTINATION,
-    subtotalCents: toMoney(15000),
+    subtotal: toMoney(15000),
     discountRate: 0,
-    discountCents: toMoney(0),
-    amountAfterDiscountCents: toMoney(15000),
+    discount: toMoney(0),
+    amountAfterDiscount: toMoney(15000),
     totalWeightKg: 0.365,
-    shippingCostCents: toMoney(0),
-    totalCents: toMoney(15000),
+    shippingCost: toMoney(0),
+    total: toMoney(15000),
+    currency: "USD",
     valid: true,
     invalidReasons: [],
     allocations: [],
@@ -98,7 +99,9 @@ describe("submitOrder — successful submission", () => {
     const decrementStub = sinon.stub(warehouseRepository, "decrementInventory").resolves();
     const expectedOrder = buildOrder({
       quantity: 20,
-      allocations: [{ warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 10, shippingCostCents: toMoney(73) }],
+      allocations: [
+        { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 10, shippingCost: toMoney(73), currency: "USD" },
+      ],
     });
     sinon.stub(orderRepository, "createOrder").resolves(expectedOrder);
 
@@ -512,7 +515,7 @@ describe("submitOrder — idempotency key reused for a different request (ticket
 
   it("rejects a key reused with a different itemId", async () => {
     stubPool();
-    const otherItem: Item = { id: "22222222-2222-2222-2222-222222222222", name: "Second Item", priceCents: toMoney(5000), weightKg: 0.5 };
+    const otherItem: Item = { id: "22222222-2222-2222-2222-222222222222", name: "Second Item", price: toMoney(5000), weightKg: 0.5 };
     sinon.stub(itemRepository, "getItem").callsFake(async (id: string) => (id === ITEM_ID ? ITEM : otherItem));
     sinon.stub(warehouseRepository, "getAllWarehouses").resolves([warehouseAt(LOS_ANGELES_ID, 10)]);
     sinon.stub(warehouseRepository, "getInventory").resolves({ warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: 100 });

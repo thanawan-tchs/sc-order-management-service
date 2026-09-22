@@ -13,7 +13,7 @@ const NEW_YORK_ID = 2;
 const defaultItem: Item = {
   id: "11111111-1111-1111-1111-111111111111",
   name: "Standard Unit",
-  priceCents: toMoney(15000),
+  price: toMoney(15000),
   weightKg: 0.365,
 };
 
@@ -22,17 +22,18 @@ function buildQuote(overrides: Partial<OrderQuote> = {}): OrderQuote {
     quantity: 10,
     item: defaultItem,
     shippingAddress: { latitude: 40.7128, longitude: -74.006 },
-    subtotalCents: toMoney(150000),
+    subtotal: toMoney(150000),
     discountRate: 0,
-    discountCents: toMoney(0),
-    amountAfterDiscountCents: toMoney(150000),
+    discount: toMoney(0),
+    amountAfterDiscount: toMoney(150000),
     totalWeightKg: 3.65,
-    shippingCostCents: toMoney(500),
-    totalCents: toMoney(150500),
+    shippingCost: toMoney(500),
+    total: toMoney(150500),
+    currency: "USD",
     valid: true,
     invalidReasons: [],
     allocations: [
-      { warehouseId: LOS_ANGELES_ID, quantity: 10, distanceKm: 1234.5, shippingCostCents: toMoney(500) },
+      { warehouseId: LOS_ANGELES_ID, quantity: 10, distanceKm: 1234.5, shippingCost: toMoney(500), currency: "USD" },
     ],
     ...overrides,
   };
@@ -60,16 +61,17 @@ function createFakeDb(): QueryExecutor {
         quantity,
         itemId,
         itemName,
-        itemPriceCents,
+        itemPrice,
         itemWeightKg,
         destLat,
         destLng,
         subtotal,
         discountRate,
-        discountCents,
+        discount,
         amountAfterDiscount,
-        shippingCents,
-        totalCents,
+        shippingCost,
+        total,
+        currency,
       ] = params;
       const id = nextOrderId++;
       const createdAt = new Date("2024-01-01T00:00:00.000Z");
@@ -79,16 +81,17 @@ function createFakeDb(): QueryExecutor {
         quantity,
         item_id: itemId,
         item_name: itemName,
-        item_price_cents: itemPriceCents,
+        item_price: itemPrice,
         item_weight_kg: itemWeightKg,
         destination_latitude: destLat,
         destination_longitude: destLng,
-        subtotal_cents: subtotal,
+        subtotal: subtotal,
         discount_rate: discountRate,
-        discount_cents: discountCents,
-        amount_after_discount_cents: amountAfterDiscount,
-        shipping_cents: shippingCents,
-        total_cents: totalCents,
+        discount: discount,
+        amount_after_discount: amountAfterDiscount,
+        shipping: shippingCost,
+        total: total,
+        currency,
         status: "CONFIRMED",
         created_at: createdAt,
       });
@@ -98,12 +101,16 @@ function createFakeDb(): QueryExecutor {
     }
 
     if (text.startsWith("INSERT INTO order_allocations")) {
-      const [orderId, warehouseId, quantity, distanceKm, shippingCents] = params as [number, ...unknown[]];
+      const [orderId, warehouseId, quantity, distanceKm, shippingCost, currency] = params as [
+        number,
+        ...unknown[]
+      ];
       allocationsByOrderId.get(orderId)!.push({
         warehouse_id: warehouseId,
         quantity,
         distance_km: distanceKm,
-        shipping_cents: shippingCents,
+        shipping: shippingCost,
+        currency,
       });
       return { rows: [], rowCount: 1 };
     }
@@ -153,12 +160,12 @@ describe("createOrder", () => {
     expect(order.orderNumber).to.match(/^ORD-\d{7}$/);
     expect(order.quantity).to.equal(quote.quantity);
     expect(order.item).to.deep.equal(defaultItem);
-    expect(order.subtotalCents).to.equal(quote.subtotalCents);
+    expect(order.subtotal).to.equal(quote.subtotal);
     expect(order.discountRate).to.equal(quote.discountRate);
-    expect(order.discountCents).to.equal(quote.discountCents);
-    expect(order.amountAfterDiscountCents).to.equal(quote.amountAfterDiscountCents);
-    expect(order.shippingCostCents).to.equal(quote.shippingCostCents);
-    expect(order.totalCents).to.equal(quote.totalCents);
+    expect(order.discount).to.equal(quote.discount);
+    expect(order.amountAfterDiscount).to.equal(quote.amountAfterDiscount);
+    expect(order.shippingCost).to.equal(quote.shippingCost);
+    expect(order.total).to.equal(quote.total);
     expect(order.valid).to.equal(true);
     expect(new Date(order.createdAt).toString()).to.not.equal("Invalid Date");
   });
@@ -168,8 +175,8 @@ describe("createOrder", () => {
     const quote = buildQuote({
       quantity: 30,
       allocations: [
-        { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100, shippingCostCents: toMoney(730) },
-        { warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50, shippingCostCents: toMoney(182) },
+        { warehouseId: LOS_ANGELES_ID, quantity: 20, distanceKm: 100, shippingCost: toMoney(730), currency: "USD" },
+        { warehouseId: NEW_YORK_ID, quantity: 10, distanceKm: 50, shippingCost: toMoney(182), currency: "USD" },
       ],
     });
 
@@ -199,29 +206,29 @@ describe("createOrder", () => {
     const db = createFakeDb();
     const quote = buildQuote({
       quantity: 10,
-      subtotalCents: toMoney(999999),
+      subtotal: toMoney(999999),
       discountRate: 0.37,
-      discountCents: toMoney(123456),
-      amountAfterDiscountCents: toMoney(876543),
-      shippingCostCents: toMoney(4321),
-      totalCents: toMoney(880864),
+      discount: toMoney(123456),
+      amountAfterDiscount: toMoney(876543),
+      shippingCost: toMoney(4321),
+      total: toMoney(880864),
     });
 
     const order = await orderRepository.createOrder(quote, db);
     const fetched = await orderRepository.getOrderByNumber(order.orderNumber, db);
 
-    expect(fetched?.subtotalCents).to.equal(999999);
+    expect(fetched?.subtotal).to.equal(999999);
     expect(fetched?.discountRate).to.equal(0.37);
-    expect(fetched?.discountCents).to.equal(123456);
-    expect(fetched?.amountAfterDiscountCents).to.equal(876543);
-    expect(fetched?.shippingCostCents).to.equal(4321);
-    expect(fetched?.totalCents).to.equal(880864);
+    expect(fetched?.discount).to.equal(123456);
+    expect(fetched?.amountAfterDiscount).to.equal(876543);
+    expect(fetched?.shippingCost).to.equal(4321);
+    expect(fetched?.total).to.equal(880864);
   });
 
   it("preserves the item snapshot, independent of the catalog's current values", async () => {
     const db = createFakeDb();
     const quote = buildQuote({
-      item: { id: defaultItem.id, name: "Renamed Product", priceCents: toMoney(99999), weightKg: 1.23 },
+      item: { id: defaultItem.id, name: "Renamed Product", price: toMoney(99999), weightKg: 1.23 },
     });
 
     const order = await orderRepository.createOrder(quote, db);
@@ -230,7 +237,7 @@ describe("createOrder", () => {
     expect(fetched?.item).to.deep.equal({
       id: defaultItem.id,
       name: "Renamed Product",
-      priceCents: 99999,
+      price: 99999,
       weightKg: 1.23,
     });
   });

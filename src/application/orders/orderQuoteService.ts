@@ -1,4 +1,4 @@
-import { SHIPPING_RATE_CENTS_PER_KG_KM } from "../../config";
+import { CURRENCY, SHIPPING_RATE_PER_KG_KM } from "../../config";
 import { WarehouseCandidate, allocateOrder } from "../../domain/allocation";
 import { ItemNotFoundError } from "../../domain/errors";
 import { Money, toMoney } from "../../domain/money";
@@ -61,10 +61,10 @@ export async function getOrderQuote(
     throw new ItemNotFoundError(input.itemId);
   }
 
-  const subtotalCents = calculateSubtotal(input.quantity, item.priceCents);
+  const subtotal = calculateSubtotal(input.quantity, item.price);
   const discountRate = getDiscountRate(input.quantity);
-  const discountCents = calculateDiscount(subtotalCents, discountRate);
-  const amountAfterDiscountCents = calculateAmountAfterDiscount(subtotalCents, discountCents);
+  const discount = calculateDiscount(subtotal, discountRate);
+  const amountAfterDiscount = calculateAmountAfterDiscount(subtotal, discount);
 
   const candidates = await deps.readWarehouseCandidates(input.itemId);
 
@@ -73,16 +73,17 @@ export async function getOrderQuote(
     input.shippingAddress,
     candidates,
     item.weightKg,
-    SHIPPING_RATE_CENTS_PER_KG_KM
+    SHIPPING_RATE_PER_KG_KM,
+    CURRENCY
   );
-  const shippingCostCents: Money = allocationResult.totalShippingCostCents;
-  const totalCents = toMoney(amountAfterDiscountCents + shippingCostCents);
+  const shippingCost: Money = allocationResult.totalShippingCost;
+  const total = toMoney(amountAfterDiscount + shippingCost);
 
   const invalidReasons: InvalidOrderReason[] = [];
   if (!allocationResult.fulfilled) {
     invalidReasons.push("INSUFFICIENT_STOCK");
   }
-  if (!isShippingCostWithinLimit(shippingCostCents, amountAfterDiscountCents)) {
+  if (!isShippingCostWithinLimit(shippingCost, amountAfterDiscount)) {
     invalidReasons.push("SHIPPING_COST_EXCEEDS_15_PERCENT");
   }
 
@@ -90,13 +91,14 @@ export async function getOrderQuote(
     quantity: input.quantity,
     item,
     shippingAddress: input.shippingAddress,
-    subtotalCents,
+    subtotal,
     discountRate,
-    discountCents,
-    amountAfterDiscountCents,
+    discount,
+    amountAfterDiscount,
     totalWeightKg: input.quantity * item.weightKg,
-    shippingCostCents,
-    totalCents,
+    shippingCost,
+    total,
+    currency: CURRENCY,
     valid: invalidReasons.length === 0,
     invalidReasons,
     allocations: allocationResult.allocations,

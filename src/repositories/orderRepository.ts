@@ -1,4 +1,3 @@
-import { CURRENCY } from "../config";
 import { IdempotencyKeyConflictError } from "../domain/errors";
 import { toMoney } from "../domain/money";
 import { Order, OrderQuote, OrderStatus } from "../domain/model/order";
@@ -17,16 +16,17 @@ interface OrderRow {
   quantity: number;
   item_id: string;
   item_name: string;
-  item_price_cents: number;
+  item_price: number;
   item_weight_kg: number;
   destination_latitude: number;
   destination_longitude: number;
-  subtotal_cents: number;
+  subtotal: number;
   discount_rate: number;
-  discount_cents: number;
-  amount_after_discount_cents: number;
-  shipping_cents: number;
-  total_cents: number;
+  discount: number;
+  amount_after_discount: number;
+  shipping: number;
+  total: number;
+  currency: string;
   status: OrderStatus;
   created_at: Date;
 }
@@ -35,7 +35,8 @@ interface AllocationRow {
   warehouse_id: number;
   quantity: number;
   distance_km: number;
-  shipping_cents: number;
+  shipping: number;
+  currency: string;
 }
 
 function mapAllocationRow(row: AllocationRow): ShippingAllocation {
@@ -43,7 +44,8 @@ function mapAllocationRow(row: AllocationRow): ShippingAllocation {
     warehouseId: row.warehouse_id,
     quantity: row.quantity,
     distanceKm: row.distance_km,
-    shippingCostCents: toMoney(row.shipping_cents),
+    shippingCost: toMoney(row.shipping),
+    currency: row.currency,
   };
 }
 
@@ -53,17 +55,18 @@ function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
     item: {
       id: row.item_id,
       name: row.item_name,
-      priceCents: toMoney(row.item_price_cents),
+      price: toMoney(row.item_price),
       weightKg: row.item_weight_kg,
     },
     shippingAddress: { latitude: row.destination_latitude, longitude: row.destination_longitude },
-    subtotalCents: toMoney(row.subtotal_cents),
+    subtotal: toMoney(row.subtotal),
     discountRate: row.discount_rate,
-    discountCents: toMoney(row.discount_cents),
-    amountAfterDiscountCents: toMoney(row.amount_after_discount_cents),
+    discount: toMoney(row.discount),
+    amountAfterDiscount: toMoney(row.amount_after_discount),
     totalWeightKg: row.quantity * row.item_weight_kg,
-    shippingCostCents: toMoney(row.shipping_cents),
-    totalCents: toMoney(row.total_cents),
+    shippingCost: toMoney(row.shipping),
+    total: toMoney(row.total),
+    currency: row.currency,
     valid: true,
     invalidReasons: [],
     allocations,
@@ -85,10 +88,10 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
 
   const { rows } = await executor.query<{ id: number; created_at: Date }>(
     `INSERT INTO orders (
-       order_number, quantity, item_id, item_name, item_price_cents, item_weight_kg,
+       order_number, quantity, item_id, item_name, item_price, item_weight_kg,
        destination_latitude, destination_longitude,
-       subtotal_cents, discount_rate, discount_cents, amount_after_discount_cents,
-       shipping_cents, total_cents, currency, status
+       subtotal, discount_rate, discount, amount_after_discount,
+       shipping, total, currency, status
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING id, created_at`,
     [
@@ -96,17 +99,17 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
       quote.quantity,
       quote.item.id,
       quote.item.name,
-      quote.item.priceCents,
+      quote.item.price,
       quote.item.weightKg,
       quote.shippingAddress.latitude,
       quote.shippingAddress.longitude,
-      quote.subtotalCents,
+      quote.subtotal,
       quote.discountRate,
-      quote.discountCents,
-      quote.amountAfterDiscountCents,
-      quote.shippingCostCents,
-      quote.totalCents,
-      CURRENCY,
+      quote.discount,
+      quote.amountAfterDiscount,
+      quote.shippingCost,
+      quote.total,
+      quote.currency,
       INITIAL_ORDER_STATUS,
     ]
   );
@@ -114,9 +117,16 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
 
   for (const allocation of quote.allocations) {
     await executor.query(
-      `INSERT INTO order_allocations (order_id, warehouse_id, quantity, distance_km, shipping_cents)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [orderId, allocation.warehouseId, allocation.quantity, allocation.distanceKm, allocation.shippingCostCents]
+      `INSERT INTO order_allocations (order_id, warehouse_id, quantity, distance_km, shipping, currency)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        orderId,
+        allocation.warehouseId,
+        allocation.quantity,
+        allocation.distanceKm,
+        allocation.shippingCost,
+        allocation.currency,
+      ]
     );
   }
 
@@ -133,10 +143,10 @@ export async function getOrderByNumber(
   executor: QueryExecutor = getPool()
 ): Promise<Order | undefined> {
   const { rows } = await executor.query<OrderRow>(
-    `SELECT id, order_number, quantity, item_id, item_name, item_price_cents, item_weight_kg,
+    `SELECT id, order_number, quantity, item_id, item_name, item_price, item_weight_kg,
             destination_latitude, destination_longitude,
-            subtotal_cents, discount_rate, discount_cents, amount_after_discount_cents,
-            shipping_cents, total_cents, status, created_at
+            subtotal, discount_rate, discount, amount_after_discount,
+            shipping, total, currency, status, created_at
      FROM orders WHERE order_number = $1`,
     [orderNumber]
   );
@@ -144,7 +154,7 @@ export async function getOrderByNumber(
   if (!orderRow) return undefined;
 
   const { rows: allocationRows } = await executor.query<AllocationRow>(
-    `SELECT warehouse_id, quantity, distance_km, shipping_cents
+    `SELECT warehouse_id, quantity, distance_km, shipping, currency
      FROM order_allocations WHERE order_id = $1 ORDER BY id`,
     [orderRow.id]
   );

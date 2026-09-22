@@ -9,23 +9,25 @@ interface OrderResponseBody {
   item: {
     id: string;
     name: string;
-    priceCents: number;
+    price: number;
   };
   quantity: number;
   pricing: {
-    subtotalCents: number;
+    subtotal: number;
     discountRate: number;
-    discountCents: number;
-    amountAfterDiscountCents: number;
-    shippingCents: number;
-    totalCents: number;
+    discount: number;
+    amountAfterDiscount: number;
+    shippingCost: number;
+    total: number;
+    currency: string;
   };
   shipping: {
     allocations: {
       warehouseId: number;
       quantity: number;
       distanceKm: number;
-      shippingCents: number;
+      shippingCost: number;
+      currency: string;
     }[];
   };
 }
@@ -37,23 +39,25 @@ function toOrderResponse(order: Order): OrderResponseBody {
     item: {
       id: order.item.id,
       name: order.item.name,
-      priceCents: order.item.priceCents,
+      price: order.item.price,
     },
     quantity: order.quantity,
     pricing: {
-      subtotalCents: order.subtotalCents,
+      subtotal: order.subtotal,
       discountRate: order.discountRate,
-      discountCents: order.discountCents,
-      amountAfterDiscountCents: order.amountAfterDiscountCents,
-      shippingCents: order.shippingCostCents,
-      totalCents: order.totalCents,
+      discount: order.discount,
+      amountAfterDiscount: order.amountAfterDiscount,
+      shippingCost: order.shippingCost,
+      total: order.total,
+      currency: order.currency,
     },
     shipping: {
       allocations: order.allocations.map((allocation) => ({
         warehouseId: allocation.warehouseId,
         quantity: allocation.quantity,
         distanceKm: allocation.distanceKm,
-        shippingCents: allocation.shippingCostCents,
+        shippingCost: allocation.shippingCost,
+        currency: allocation.currency,
       })),
     },
   };

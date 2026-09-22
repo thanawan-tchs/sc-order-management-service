@@ -7,6 +7,7 @@ const DESTINATION = { latitude: 0, longitude: 0 };
 
 const WEIGHT_KG = 1;
 const RATE = 1;
+const CURRENCY = "USD";
 
 function warehouseAtDistance(distanceKm: number, warehouseId: number, stock: number): WarehouseCandidate {
   const { latitude, longitude } = pointAtDistanceFromOrigin(distanceKm);
@@ -17,28 +18,28 @@ describe("allocateOrder", () => {
   it("single warehouse: fulfills entirely from the one candidate", () => {
     const warehouse = warehouseAtDistance(50, 1, 1000);
 
-    const result = allocateOrder(300, DESTINATION, [warehouse], WEIGHT_KG, RATE);
+    const result = allocateOrder(300, DESTINATION, [warehouse], WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations).to.have.lengthOf(1);
-    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 300, shippingCostCents: 15000 });
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 300, shippingCost: 15000 });
     expect(result.allocations[0].distanceKm).to.be.closeTo(50, 1e-6);
-    expect(result.totalShippingCostCents).to.equal(15000); // 50km * 300 * 1kg * 1c
+    expect(result.totalShippingCost).to.equal(15000); // 50km * 300 * 1kg * 1c
   });
 
   it("two warehouses: drains the cheaper one first, then spills into the second", () => {
     const near = warehouseAtDistance(50, 1, 80);
     const far = warehouseAtDistance(150, 2, 500);
 
-    const result = allocateOrder(100, DESTINATION, [far, near], WEIGHT_KG, RATE);
+    const result = allocateOrder(100, DESTINATION, [far, near], WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations).to.have.lengthOf(2);
-    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 80, shippingCostCents: 4000 });
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 80, shippingCost: 4000 });
     expect(result.allocations[0].distanceKm).to.be.closeTo(50, 1e-6);
-    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCostCents: 3000 });
+    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCost: 3000 });
     expect(result.allocations[1].distanceKm).to.be.closeTo(150, 1e-6);
-    expect(result.totalShippingCostCents).to.equal(7000);
+    expect(result.totalShippingCost).to.equal(7000);
   });
 
   it("three warehouses: matches the ticket's own worked example (A=100, B=20, C=0)", () => {
@@ -46,16 +47,16 @@ describe("allocateOrder", () => {
     const b = warehouseAtDistance(200, 2, 50); // 200 cents/unit = $2
     const c = warehouseAtDistance(300, 3, 200); // 300 cents/unit = $3
 
-    const result = allocateOrder(120, DESTINATION, [c, a, b], WEIGHT_KG, RATE);
+    const result = allocateOrder(120, DESTINATION, [c, a, b], WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations).to.have.lengthOf(2);
-    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 100, shippingCostCents: 10000 });
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 100, shippingCost: 10000 });
     expect(result.allocations[0].distanceKm).to.be.closeTo(100, 1e-6);
-    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCostCents: 4000 });
+    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCost: 4000 });
     expect(result.allocations[1].distanceKm).to.be.closeTo(200, 1e-6);
     expect(result.allocations.find((line) => line.warehouseId === 3)).to.equal(undefined);
-    expect(result.totalShippingCostCents).to.equal(14000); // $140.00
+    expect(result.totalShippingCost).to.equal(14000); // $140.00
   });
 
   it("exact stock: fully drains every warehouse needed with nothing left over or short", () => {
@@ -63,7 +64,7 @@ describe("allocateOrder", () => {
     const b = warehouseAtDistance(20, 2, 50);
     const untouchedButCheaperNever = warehouseAtDistance(30, 3, 999); // more expensive, unused
 
-    const result = allocateOrder(150, DESTINATION, [a, b, untouchedButCheaperNever], WEIGHT_KG, RATE);
+    const result = allocateOrder(150, DESTINATION, [a, b, untouchedButCheaperNever], WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations.map((l) => ({ warehouseId: l.warehouseId, quantity: l.quantity }))).to.deep.equal([
@@ -78,7 +79,7 @@ describe("allocateOrder", () => {
     const a = warehouseAtDistance(10, 1, 30);
     const b = warehouseAtDistance(20, 2, 40);
 
-    const result = allocateOrder(100, DESTINATION, [a, b], WEIGHT_KG, RATE);
+    const result = allocateOrder(100, DESTINATION, [a, b], WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(false);
     const totalAllocated = result.allocations.reduce((sum, l) => sum + l.quantity, 0);
@@ -96,7 +97,7 @@ describe("allocateOrder", () => {
       warehouseAtDistance(30, 3, 5),
     ];
 
-    const result = allocateOrder(1000, DESTINATION, warehouses, WEIGHT_KG, RATE);
+    const result = allocateOrder(1000, DESTINATION, warehouses, WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(false);
     expect(result.allocations.reduce((sum, l) => sum + l.quantity, 0)).to.equal(15);
@@ -107,13 +108,13 @@ describe("allocateOrder", () => {
     const lowerId = warehouseAtDistance(sameDistance, 1, 30);
     const higherId = warehouseAtDistance(sameDistance, 2, 40);
 
-    const result = allocateOrder(50, DESTINATION, [higherId, lowerId], WEIGHT_KG, RATE);
+    const result = allocateOrder(50, DESTINATION, [higherId, lowerId], WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations).to.have.lengthOf(2);
-    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 30, shippingCostCents: 3000 });
+    expect(result.allocations[0]).to.include({ warehouseId: 1, quantity: 30, shippingCost: 3000 });
     expect(result.allocations[0].distanceKm).to.be.closeTo(100, 1e-6);
-    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCostCents: 2000 });
+    expect(result.allocations[1]).to.include({ warehouseId: 2, quantity: 20, shippingCost: 2000 });
     expect(result.allocations[1].distanceKm).to.be.closeTo(100, 1e-6);
   });
 
@@ -122,7 +123,7 @@ describe("allocateOrder", () => {
       warehouseAtDistance(distance, index + 1, 30000)
     );
 
-    const result = allocateOrder(100000, DESTINATION, warehouses, WEIGHT_KG, RATE);
+    const result = allocateOrder(100000, DESTINATION, warehouses, WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations.map((l) => ({ warehouseId: l.warehouseId, quantity: l.quantity }))).to.deep.equal([
@@ -142,7 +143,7 @@ describe("allocateOrder", () => {
       warehouseAtDistance(30, 3, 200),
     ];
 
-    const result = allocateOrder(50, DESTINATION, warehouses, WEIGHT_KG, RATE);
+    const result = allocateOrder(50, DESTINATION, warehouses, WEIGHT_KG, RATE, CURRENCY);
 
     expect(result.fulfilled).to.equal(true);
     expect(result.allocations.find((l) => l.warehouseId === 2)).to.equal(undefined);
@@ -156,20 +157,20 @@ describe("allocateOrder", () => {
     const a = warehouseAtDistance(75, 1, 40);
     const b = warehouseAtDistance(225, 2, 40);
 
-    const result = allocateOrder(60, DESTINATION, [a, b], 0.365, 1);
+    const result = allocateOrder(60, DESTINATION, [a, b], 0.365, 1, CURRENCY);
 
     const expectedTotal = result.allocations.reduce(
       (sum, line) => sum + calculateShippingCost(line.distanceKm, line.quantity, 0.365, 1),
       0
     );
-    expect(result.totalShippingCostCents).to.equal(expectedTotal);
+    expect(result.totalShippingCost).to.equal(expectedTotal);
   });
 
   it("does not mutate the warehouses passed in", () => {
     const warehouses = [warehouseAtDistance(10, 1, 100)];
     const snapshot = JSON.parse(JSON.stringify(warehouses));
 
-    allocateOrder(50, DESTINATION, warehouses, WEIGHT_KG, RATE);
+    allocateOrder(50, DESTINATION, warehouses, WEIGHT_KG, RATE, CURRENCY);
 
     expect(warehouses).to.deep.equal(snapshot);
   });

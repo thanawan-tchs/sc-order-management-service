@@ -7,8 +7,8 @@ export function calculateShippingCost(
   ratePerKgPerKm: number
 ): Money {
   const weightKg = quantity * unitWeightKg;
-  const rawCents = distanceKm * weightKg * ratePerKgPerKm;
-  return toMoney(Math.round(rawCents));
+  const rawAmount = distanceKm * weightKg * ratePerKgPerKm;
+  return toMoney(Math.round(rawAmount));
 }
 
 export function sumShippingCosts(costs: Money[]): Money {

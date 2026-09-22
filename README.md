@@ -183,14 +183,14 @@ one item ("Standard Unit"); use `POST /v1/items` below to add more, or `GET /v1/
 on any existing order to find a valid `itemId` for the order examples below.
 
 `POST /v1/items` — add an item to the catalog. `201` with the created item (its `id` is a
-server-generated UUID); `400` (`INVALID_ITEM_NAME`, `INVALID_PRICE_CENTS`, `INVALID_WEIGHT_KG`, or
+server-generated UUID); `400` (`INVALID_ITEM_NAME`, `INVALID_PRICE`, `INVALID_WEIGHT_KG`, or
 the generic `VALIDATION_ERROR` fallback) for a malformed request body.
 
 ```bash
 curl -X POST http://localhost:3000/v1/items \
   -H "Content-Type: application/json" \
-  -d '{"name": "Premium Unit", "priceCents": 30000, "weightKg": 2.5}'
-# {"id":"<uuid>","name":"Premium Unit","priceCents":30000,"weightKg":2.5}
+  -d '{"name": "Premium Unit", "price": 30000, "weightKg": 2.5}'
+# {"id":"<uuid>","name":"Premium Unit","price":30000,"weightKg":2.5}
 ```
 
 `GET /v1/items` — list the full catalog. `200` with an array of items (no pagination/filtering
@@ -198,7 +198,7 @@ yet, fine at today's scale).
 
 ```bash
 curl http://localhost:3000/v1/items
-# [{"id":"<uuid>","name":"Standard Unit","priceCents":15000,"weightKg":0.365}, ...]
+# [{"id":"<uuid>","name":"Standard Unit","price":15000,"weightKg":0.365}, ...]
 ```
 
 `GET /v1/items/:itemId` — retrieve a single catalog item. `200` with the item; `400`
@@ -223,10 +223,10 @@ curl -X POST http://localhost:3000/v1/orders/quote \
 ```json
 {
   "valid": true,
-  "item": { "id": "<uuid>", "name": "Standard Unit", "priceCents": 15000 },
+  "item": { "id": "<uuid>", "name": "Standard Unit", "price": 15000 },
   "quantity": 50,
-  "pricing": { "subtotalCents": 750000, "discountRate": 0.05, "discountCents": 37500, "amountAfterDiscountCents": 712500, "shippingCents": 4200, "totalCents": 716700 },
-  "shipping": { "totalWeightKg": 18.25, "allocations": [{ "warehouseId": 2, "quantity": 50, "distanceKm": 8.4, "shippingCents": 4200 }] },
+  "pricing": { "subtotal": 750000, "discountRate": 0.05, "discount": 37500, "amountAfterDiscount": 712500, "shippingCost": 4200, "total": 716700, "currency": "USD" },
+  "shipping": { "totalWeightKg": 18.25, "allocations": [{ "warehouseId": 2, "quantity": 50, "distanceKm": 8.4, "shippingCost": 4200, "currency": "USD" }] },
   "invalidReason": null
 }
 ```
@@ -279,7 +279,7 @@ Every error response across all three endpoints has the same shape (ticket 15):
 
 | Status | Codes |
 |---|---|
-| 400 | `INVALID_ITEM_ID`, `INVALID_QUANTITY`, `INVALID_LATITUDE`, `INVALID_LONGITUDE`, `INVALID_ITEM_NAME`, `INVALID_PRICE_CENTS`, `INVALID_WEIGHT_KG`, `VALIDATION_ERROR` (generic fallback, e.g. a missing `shippingAddress`) |
+| 400 | `INVALID_ITEM_ID`, `INVALID_QUANTITY`, `INVALID_LATITUDE`, `INVALID_LONGITUDE`, `INVALID_ITEM_NAME`, `INVALID_PRICE`, `INVALID_WEIGHT_KG`, `VALIDATION_ERROR` (generic fallback, e.g. a missing `shippingAddress`) |
 | 404 | `ORDER_NOT_FOUND`, `ITEM_NOT_FOUND` (`itemId` doesn't match any row in the `items` catalog) |
 | 409 | `INVENTORY_CONFLICT` (a concurrent submission won a live race for the same stock), `IDEMPOTENCY_KEY_REUSED` (the same `Idempotency-Key` was sent with a different `itemId`/`quantity`/`shippingAddress` than the request it was originally claimed for — a *matching* retry is not an error, see ticket 13) |
 | 422 | `INSUFFICIENT_STOCK`, `SHIPPING_COST_EXCEEDS_15_PERCENT` (the recalculated order fails a business rule) |

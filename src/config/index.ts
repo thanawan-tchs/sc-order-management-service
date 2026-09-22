@@ -16,11 +16,11 @@ export const config = {
   shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 10_000),
 };
 
-export const SHIPPING_RATE_CENTS_PER_KG_KM = 1;
+export const SHIPPING_RATE_PER_KG_KM = 1;
 
 export const CURRENCY = "USD";
 
-export const SEED_ITEMS = [{ name: "Standard Unit", priceCents: 15000, weightKg: 0.365 }];
+export const SEED_ITEMS = [{ name: "Standard Unit", price: 15000, weightKg: 0.365 }];
 
 export const SEED_WAREHOUSES = [
   { name: "Los Angeles", latitude: 33.9425, longitude: -118.408056, stock: 355 },

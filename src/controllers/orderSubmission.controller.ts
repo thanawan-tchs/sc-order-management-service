@@ -13,6 +13,11 @@ import {
 interface OrderResponseBody {
   orderNumber: string;
   status: string;
+  item: {
+    id: string;
+    name: string;
+    priceCents: number;
+  };
   quantity: number;
   pricing: {
     subtotalCents: number;
@@ -38,6 +43,11 @@ function toOrderResponse(order: Order): OrderResponseBody {
   return {
     orderNumber: order.orderNumber,
     status: order.status,
+    item: {
+      id: order.item.id,
+      name: order.item.name,
+      priceCents: order.item.priceCents,
+    },
     quantity: order.quantity,
     pricing: {
       subtotalCents: order.subtotalCents,

@@ -6,6 +6,11 @@ import { Order } from "../domain/types";
 interface OrderDetailResponseBody {
   orderNumber: string;
   status: string;
+  item: {
+    id: string;
+    name: string;
+    priceCents: number;
+  };
   quantity: number;
   destination: { latitude: number; longitude: number };
   pricing: {
@@ -34,6 +39,11 @@ function toOrderDetailResponse(order: Order): OrderDetailResponseBody {
   return {
     orderNumber: order.orderNumber,
     status: order.status,
+    item: {
+      id: order.item.id,
+      name: order.item.name,
+      priceCents: order.item.priceCents,
+    },
     quantity: order.quantity,
     destination: order.shippingAddress,
     pricing: {

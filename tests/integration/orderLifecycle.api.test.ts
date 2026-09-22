@@ -1,7 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/app";
-import { ITEM_WEIGHT_KG } from "../../src/config";
 import { closePool, getPool } from "../../src/infrastructure/db/pool";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
@@ -20,6 +19,10 @@ const app = createApp();
 const NYC = { latitude: 40.7128, longitude: -74.006 };
 const NEW_YORK_ID = 2;
 const ALL_WAREHOUSE_IDS = [1, 2, 3, 4, 5, 6];
+// Matches the one seed item's weight; its id is a UUID (ticket "use item id as uuid format"),
+// generated fresh by resetTestDb on every reset — captured in beforeEach rather than hardcoded.
+let itemId: string;
+const UNIT_WEIGHT_KG = 0.365;
 
 async function repositionWarehouse(
   id: number,
@@ -34,18 +37,25 @@ async function repositionWarehouse(
     longitude,
     id,
   ]);
-  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2", [stock, id]);
+  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2 AND item_id = $3", [
+    stock,
+    id,
+    itemId,
+  ]);
 }
 
 async function zeroOutStock(ids: number[]): Promise<void> {
   const pool = getPool();
   for (const id of ids) {
-    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1", [id]);
+    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1 AND item_id = $2", [
+      id,
+      itemId,
+    ]);
   }
 }
 
 beforeEach(async () => {
-  await resetTestDb();
+  itemId = await resetTestDb();
 });
 
 afterAll(async () => {
@@ -62,19 +72,21 @@ describe("order lifecycle: quote -> submit -> get stay consistent", () => {
 
       const quoteResponse = await request(app.callback())
         .post("/v1/orders/quote")
-        .send({ quantity, shippingAddress: NYC });
+        .send({ itemId: itemId, quantity, shippingAddress: NYC });
       expect(quoteResponse.status).toBe(200);
       expect(quoteResponse.body.valid).toBe(true);
       expect(quoteResponse.body.quantity).toBe(quantity);
 
       const submitResponse = await request(app.callback())
         .post("/v1/orders")
-        .send({ quantity, shippingAddress: NYC });
+        .send({ itemId: itemId, quantity, shippingAddress: NYC });
       expect(submitResponse.status).toBe(201);
 
       // The quote is a preview of exactly what submit produces — same pricing, same allocation.
       expect(submitResponse.body.pricing).toEqual(quoteResponse.body.pricing);
-      expect(submitResponse.body.shipping.allocations).toEqual(quoteResponse.body.shipping.allocations);
+      expect(submitResponse.body.shipping.allocations).toEqual(
+        quoteResponse.body.shipping.allocations
+      );
 
       const getResponse = await request(app.callback()).get(
         `/v1/orders/${submitResponse.body.orderNumber}`
@@ -84,7 +96,9 @@ describe("order lifecycle: quote -> submit -> get stay consistent", () => {
       // What was submitted is exactly what's retrievable afterward.
       expect(getResponse.body.quantity).toBe(quantity);
       expect(getResponse.body.pricing).toEqual(submitResponse.body.pricing);
-      expect(getResponse.body.shipping.allocations).toEqual(submitResponse.body.shipping.allocations);
+      expect(getResponse.body.shipping.allocations).toEqual(
+        submitResponse.body.shipping.allocations
+      );
       expect(getResponse.body.status).toBe("CONFIRMED");
     }
   );
@@ -97,12 +111,12 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
     // warehouses are zeroed out so a real-world-positioned one can't end up cheaper than New
     // York once it's artificially moved this far away.
     await zeroOutStock(ALL_WAREHOUSE_IDS);
-    const distanceForExactly2250Cents = 2250 / (1 * ITEM_WEIGHT_KG);
+    const distanceForExactly2250Cents = 2250 / (1 * UNIT_WEIGHT_KG);
     await repositionWarehouse(NEW_YORK_ID, NYC, distanceForExactly2250Cents, 10);
 
     const quoteResponse = await request(app.callback())
       .post("/v1/orders/quote")
-      .send({ quantity: 1, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(quoteResponse.status).toBe(200);
     expect(quoteResponse.body.pricing.amountAfterDiscountCents).toBe(15000);
@@ -112,7 +126,7 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
 
     const submitResponse = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 1, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(submitResponse.status).toBe(201);
     expect(submitResponse.body.pricing.shippingCents).toBe(2250);
@@ -120,12 +134,12 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
 
   it("one cent over the boundary is invalid at quote and rejected at submit", async () => {
     await zeroOutStock(ALL_WAREHOUSE_IDS);
-    const distanceForExactly2251Cents = 2251 / (1 * ITEM_WEIGHT_KG);
+    const distanceForExactly2251Cents = 2251 / (1 * UNIT_WEIGHT_KG);
     await repositionWarehouse(NEW_YORK_ID, NYC, distanceForExactly2251Cents, 10);
 
     const quoteResponse = await request(app.callback())
       .post("/v1/orders/quote")
-      .send({ quantity: 1, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(quoteResponse.body.pricing.shippingCents).toBe(2251);
     expect(quoteResponse.body.valid).toBe(false);
@@ -133,7 +147,7 @@ describe("shipping cost exactly at 15% (ticket 16 scenario 13)", () => {
 
     const submitResponse = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 1, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(submitResponse.status).toBe(422);
     expect(submitResponse.body.error.code).toBe("SHIPPING_COST_EXCEEDS_15_PERCENT");

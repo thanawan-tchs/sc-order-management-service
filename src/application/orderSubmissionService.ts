@@ -2,15 +2,13 @@ import { IdempotencyKeyConflictError, IdempotencyKeyReusedError, OrderSubmission
 import { Order, ShippingAddress } from "../domain/types";
 import { QueryExecutor } from "../infrastructure/db/pool";
 import { withTransaction } from "../infrastructure/db/transaction";
-import {
-  createOrder,
-  findOrderByIdempotencyKey,
-  recordIdempotencyKey,
-} from "../repositories/orderRepository";
-import { decrementInventory } from "../repositories/warehouseRepository";
+import * as itemRepository from "../repositories/itemRepository";
+import * as orderRepository from "../repositories/orderRepository";
+import * as warehouseRepository from "../repositories/warehouseRepository";
 import { getOrderQuote, readWarehouseCandidates } from "./orderQuoteService";
 
 export interface OrderSubmissionInput {
+  itemId: string;
   quantity: number;
   shippingAddress: ShippingAddress;
   /** Optional client-generated `Idempotency-Key` (ticket 13). When present, a repeated
@@ -23,10 +21,12 @@ export interface OrderSubmissionInput {
  * asking for. A matching retry is the normal case (ticket 13) — return the cached order. A
  * mismatch means the same key is being reused for a genuinely different order (ticket 15) —
  * that's a client bug worth surfacing, not something to silently paper over by either creating a
- * second order or returning the wrong one.
+ * second order or returning the wrong one. `itemId` is compared the same way `quantity` already
+ * is — reusing a key for a different item is just as much a mismatch as a different quantity.
  */
 function matchesClaimedOrder(existing: Order, input: OrderSubmissionInput): boolean {
   return (
+    existing.item.id === input.itemId &&
     existing.quantity === input.quantity &&
     existing.shippingAddress.latitude === input.shippingAddress.latitude &&
     existing.shippingAddress.longitude === input.shippingAddress.longitude
@@ -43,7 +43,7 @@ async function checkIdempotencyKey(
   input: OrderSubmissionInput,
   executor?: QueryExecutor
 ): Promise<Order | undefined> {
-  const existing = await findOrderByIdempotencyKey(idempotencyKey, executor);
+  const existing = await orderRepository.findOrderByIdempotencyKey(idempotencyKey, executor);
   if (!existing) return undefined;
 
   if (!matchesClaimedOrder(existing, input)) {
@@ -60,11 +60,11 @@ async function checkIdempotencyKey(
  *     -> doesn't match -> throw IdempotencyKeyReusedError, no transaction
  *   BEGIN
  *     -> (race-closing re-check) same check as the fast path, again
- *     -> read current inventory (inside the transaction, via `client`)
+ *     -> look up the item + read current inventory (inside the transaction, via `client`)
  *     -> price + allocate + check the 15% rule — the exact same calculation
  *        `getOrderQuote` uses (ticket 08), just fed inventory read through this transaction's
  *        client instead of the pool. "Critical Rule": the server always recalculates from
- *        scratch here — the input is only `quantity`/`shippingAddress`, so there is no
+ *        scratch here — the input is only `itemId`/`quantity`/`shippingAddress`, so there is no
  *        price/discount/shipping/allocation value from the client to (mis)trust in the first
  *        place.
  *     -> if invalid: throw (caught below) -> ROLLBACK, nothing written, idempotency key stays free
@@ -78,8 +78,8 @@ async function checkIdempotencyKey(
  *     all, so its order now exists — fetch and return it instead of erroring (or throw
  *     IdempotencyKeyReusedError if even the winner's order doesn't match this request).
  *
- * If any step after BEGIN throws — an invalid recalculated order, a concurrent submission
- * winning the race for the same stock (a guarded decrement affecting 0 rows throws
+ * If any step after BEGIN throws — an unknown itemId, an invalid recalculated order, a concurrent
+ * submission winning the race for the same stock (a guarded decrement affecting 0 rows throws
  * `InsufficientStockError`), or a lost idempotency-key race — `withTransaction` rolls back
  * everything, including any decrements already applied earlier in this same call. No partial
  * inventory deduction and no order ever persist for a failed submission, and (ticket 13) no
@@ -102,7 +102,8 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
       }
 
       const quote = await getOrderQuote(input, {
-        readWarehouseCandidates: () => readWarehouseCandidates(client),
+        readWarehouseCandidates: (itemId) => readWarehouseCandidates(itemId, client),
+        getItem: (itemId) => itemRepository.getItem(itemId, client),
       });
 
       if (!quote.valid) {
@@ -110,13 +111,13 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
       }
 
       for (const line of quote.allocations) {
-        await decrementInventory(line.warehouseId, line.quantity, client);
+        await warehouseRepository.decrementInventory(line.warehouseId, input.itemId, line.quantity, client);
       }
 
-      const order = await createOrder(quote, client);
+      const order = await orderRepository.createOrder(quote, client);
 
       if (idempotencyKey) {
-        await recordIdempotencyKey(idempotencyKey, order.orderNumber, client);
+        await orderRepository.recordIdempotencyKey(idempotencyKey, order.orderNumber, client);
       }
 
       return order;

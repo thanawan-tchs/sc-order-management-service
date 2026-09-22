@@ -10,6 +10,12 @@ ScreenCloud order management backend — Node.js + TypeScript + Koa + PostgreSQL
 > strategy & CI, observability & production readiness). See
 > [`order-management-service-ticket-plan/`](order-management-service-ticket-plan/) for the full
 > system design and ticket breakdown; functionality lands incrementally, ticket by ticket.
+>
+> Since ticket 17, the catalog was generalized beyond the original single hard-coded SKU: an
+> `items` table (name/price/weight, configured as data) backs a multi-item catalog, the order API
+> takes a client-chosen `itemId` (UUID) per order, and every response includes the ordered item's
+> details alongside a snapshot of it on the persisted order (so a later price change never
+> retroactively changes a historical order).
 
 ## Requirements
 
@@ -35,12 +41,37 @@ npm run db:up      # starts Postgres via docker-compose, on host port 5433
 npm run dev     # start with auto-reload (tsx watch)
 ```
 
-On startup the service runs migrations and seeds the 6 warehouses (if the `warehouses` table is
-empty) before binding the port. The service listens on `PORT` (default `3000`). Verify it's up:
+On startup the service runs migrations and seeds the catalog item and 6 warehouses (if the `items`/
+`warehouses` tables are empty) before binding the port. The service listens on `PORT` (default
+`3000`). Verify it's up:
 
 ```bash
 curl http://localhost:3000/health
 # {"status":"ok"}
+```
+
+## Metrics (Prometheus)
+
+The app exposes Prometheus metrics at `GET /metrics` (see `src/observability/metrics.ts`). To see
+them scraped and graphed locally:
+
+```bash
+npm run metrics:up          # starts Prometheus on http://localhost:9090
+npm run dev                 # the app must be running for there to be anything to scrape
+```
+
+Prometheus scrapes every 5s (`docker/prometheus.yml`). Send some requests, then open
+<http://localhost:9090> → **Status → Targets** (should show `host` as UP; the `container` target is
+only UP if you run the app via `docker compose up --build app` instead) and try queries in the
+**Graph** tab:
+
+```promql
+http_requests_total                                    # every request, by method/route/status
+sum by (route, status) (rate(http_requests_total[1m])) # requests per second, per route
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))  # p95 latency
+orders_successful_total                                # orders persisted
+sum by (reason) (orders_rejected_total)                # 422 rejections, by business reason
+inventory_conflicts_total                              # 409s: lost a live race for stock
 ```
 
 ## Build & run compiled output
@@ -81,11 +112,11 @@ npm run typecheck
 src/
   app.ts                    # builds the Koa app (no listen()) — importable by tests
   server.ts                 # runtime entrypoint: migrate -> seed -> listen
-  routes/                   # /health (unversioned), /v1/orders/* (versioned API)
+  routes/                   # /health (unversioned), /v1/orders/*, /v1/items/* (versioned API)
   controllers/               # one file per controller — parse/validate -> call a service -> map to HTTP
-  application/               # orderQuoteService, orderSubmissionService, getOrderService
+  application/               # orderQuoteService, orderSubmissionService, getOrderService, itemService
   domain/                    # types, validation schemas, errors, pricing/distance/shipping/allocation/validity
-  repositories/               # warehouseRepository, orderRepository
+  repositories/               # itemRepository, warehouseRepository, orderRepository
   infrastructure/
     db/                       # pg Pool, schema (DDL), migrate, seed, withTransaction()
     gracefulShutdown.ts       # SIGTERM/SIGINT handler
@@ -120,17 +151,20 @@ lives here.
   never recalculates anything.
 
 **`domain/`** — core types (`Item`, `Warehouse`, `Inventory`, `OrderQuote`, `Order`, `Money`, ...),
-request validation schemas (zod), `errors.ts` (every `AppError` subclass — `ValidationError`,
-`OrderSubmissionError`, `InsufficientStockError`, `IdempotencyKeyReusedError`, `OrderNotFoundError`
-— each carrying its own HTTP status + error code, ticket 15), `pricing.ts` (subtotal/discount),
+request validation schemas (zod, incl. `itemId: z.string().uuid()`), `errors.ts` (every `AppError`
+subclass — `ValidationError`, `OrderSubmissionError`, `InsufficientStockError`,
+`IdempotencyKeyReusedError`, `OrderNotFoundError`, `ItemNotFoundError` — each carrying its own HTTP
+status + error code, ticket 15), `pricing.ts` (subtotal/discount),
 `distance.ts` (Haversine), `shipping.ts` (per-allocation cost + multi-warehouse sum), `allocation.ts`
 (greedy lowest-cost multi-warehouse fulfillment), and `validity.ts` (the 15% shipping-cost rule).
 
-**`repositories/`** — `warehouseRepository` (warehouse + inventory data access, incl.
-`decrementInventory`) and `orderRepository` (ticket 10: persists an already-computed `OrderQuote`
-as an `Order` + its allocations, generates a unique order number). Every function takes an optional
-`executor` (pool or an already-checked-out transaction client) so ticket 11 can run several of
-these calls as one atomic unit.
+**`repositories/`** — `itemRepository` (catalog lookups: `getItem`, `getAllItems`),
+`warehouseRepository` (warehouse + inventory data access, incl. `decrementInventory`, keyed by
+`(warehouseId, itemId)`) and `orderRepository` (ticket 10: persists an already-computed
+`OrderQuote` as an `Order` + its allocations, including a snapshot of the ordered item's
+name/price/weight at submission time, and generates a unique order number). Every function takes
+an optional `executor` (pool or an already-checked-out transaction client) so ticket 11 can run
+several of these calls as one atomic unit.
 
 **`infrastructure/`**
 - `db/` — pg `Pool` (ticket 17: pool size + timeouts from config), schema (DDL), migrate, seed, and
@@ -153,29 +187,75 @@ registry + metric definitions).
 
 ### API
 
+Every order request body takes `itemId` (a UUID identifying a row in the `items` catalog table),
+`quantity`, and `shippingAddress` — no price, discount, or item name/weight is ever accepted from
+the client; those are always looked up server-side from `items` by `itemId`. The seed data inserts
+one item ("Standard Unit"); use `POST /v1/items` below to add more, or `GET /v1/orders/:orderNumber`
+on any existing order to find a valid `itemId` for the order examples below.
+
+`POST /v1/items` — add an item to the catalog. `201` with the created item (its `id` is a
+server-generated UUID); `400` (`INVALID_ITEM_NAME`, `INVALID_PRICE_CENTS`, `INVALID_WEIGHT_KG`, or
+the generic `VALIDATION_ERROR` fallback) for a malformed request body.
+
+```bash
+curl -X POST http://localhost:3000/v1/items \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Premium Unit", "priceCents": 30000, "weightKg": 2.5}'
+# {"id":"<uuid>","name":"Premium Unit","priceCents":30000,"weightKg":2.5}
+```
+
+`GET /v1/items` — list the full catalog. `200` with an array of items (no pagination/filtering
+yet, fine at today's scale).
+
+```bash
+curl http://localhost:3000/v1/items
+# [{"id":"<uuid>","name":"Standard Unit","priceCents":15000,"weightKg":0.365}, ...]
+```
+
+`GET /v1/items/:itemId` — retrieve a single catalog item. `200` with the item; `400`
+(`INVALID_ITEM_ID`) if `itemId` isn't a well-formed UUID; `404` (`ITEM_NOT_FOUND`) if it is
+well-formed but doesn't match any row.
+
+```bash
+curl http://localhost:3000/v1/items/<uuid>
+```
+
 `POST /v1/orders/quote` — verify a potential order (price, discount, shipping, validity) with no
 side effects. `200` with `valid: false` and an `invalidReason` (`"INSUFFICIENT_STOCK"` or
-`"SHIPPING_COST_EXCEEDS_15_PERCENT"`) for a business-invalid order; `400` only for a malformed
-request body.
+`"SHIPPING_COST_EXCEEDS_15_PERCENT"`) for a business-invalid order; `400` for a malformed request
+body; `404` (`ITEM_NOT_FOUND`) if `itemId` doesn't match any item in the catalog.
 
 ```bash
 curl -X POST http://localhost:3000/v1/orders/quote \
   -H "Content-Type: application/json" \
-  -d '{"quantity": 50, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+  -d '{"itemId": "<uuid>", "quantity": 50, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+```
+
+```json
+{
+  "valid": true,
+  "item": { "id": "<uuid>", "name": "Standard Unit", "priceCents": 15000 },
+  "quantity": 50,
+  "pricing": { "subtotalCents": 750000, "discountRate": 0.05, "discountCents": 37500, "amountAfterDiscountCents": 712500, "shippingCents": 4200, "totalCents": 716700 },
+  "shipping": { "totalWeightKg": 18.25, "allocations": [{ "warehouseId": 2, "quantity": 50, "distanceKm": 8.4, "shippingCents": 4200 }] },
+  "invalidReason": null
+}
 ```
 
 `POST /v1/orders` — submit an order (ticket 12). Recalculates everything server-side from
-`quantity`/`shippingAddress` only — any other field in the request body (a price, a discount, an
-allocation) is silently ignored, never trusted. `201` on success; `422` (`ORDER_INVALID`) when the
-recalculated order fails a business rule (insufficient stock and/or shipping over 15%); `409`
-(`INVENTORY_CONFLICT`) when a concurrent submission wins a race for the same stock after this one
-was otherwise valid — a transient, retry-friendly conflict, distinct from `422`'s durable
-rejection; `400` for a malformed request body.
+`itemId`/`quantity`/`shippingAddress` only — any other field in the request body (a price, a
+discount, an allocation) is silently ignored, never trusted, and a prior quote never reserves
+inventory. `201` on success (same `item`/`quantity`/`pricing`/`shipping` shape as the quote
+response, plus `orderNumber`/`status`); `422` (`ORDER_INVALID`) when the recalculated order fails a
+business rule (insufficient stock and/or shipping over 15%); `409` (`INVENTORY_CONFLICT`) when a
+concurrent submission wins a race for the same stock after this one was otherwise valid — a
+transient, retry-friendly conflict, distinct from `422`'s durable rejection; `400` for a malformed
+request body; `404` (`ITEM_NOT_FOUND`) for an unknown `itemId`.
 
 ```bash
 curl -X POST http://localhost:3000/v1/orders \
   -H "Content-Type: application/json" \
-  -d '{"quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+  -d '{"itemId": "<uuid>", "quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
 ```
 
 `POST /v1/orders` also accepts an optional `Idempotency-Key` header (ticket 13). Repeating a
@@ -187,13 +267,14 @@ a customer.
 curl -X POST http://localhost:3000/v1/orders \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: <client-generated-uuid>" \
-  -d '{"quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
+  -d '{"itemId": "<uuid>", "quantity": 100, "shippingAddress": {"latitude": 40.7128, "longitude": -74.006}}'
 ```
 
 `GET /v1/orders/:orderNumber` — retrieve a previously submitted order (ticket 14). Returns exactly
-the persisted calculation snapshot; never recalculates pricing, distance, or discount, so the
-order's numbers don't shift even if the business's current rates change after it was placed. `200`
-when found, `404` (`ORDER_NOT_FOUND`) otherwise.
+the persisted calculation snapshot — including the ordered item's name/price at submission time,
+even if the `items` catalog has since changed — never recalculates pricing, distance, or discount.
+`200` when found (adds `destination` and `createdAt` to the same `item`/`quantity`/`pricing`/
+`shipping` shape), `404` (`ORDER_NOT_FOUND`) otherwise.
 
 ```bash
 curl http://localhost:3000/v1/orders/ORD-0000001
@@ -209,9 +290,9 @@ Every error response across all three endpoints has the same shape (ticket 15):
 
 | Status | Codes |
 |---|---|
-| 400 | `INVALID_QUANTITY`, `INVALID_LATITUDE`, `INVALID_LONGITUDE`, `VALIDATION_ERROR` (generic fallback, e.g. a missing `shippingAddress`) |
-| 404 | `ORDER_NOT_FOUND` |
-| 409 | `INVENTORY_CONFLICT` (a concurrent submission won a live race for the same stock), `IDEMPOTENCY_KEY_REUSED` (the same `Idempotency-Key` was sent with a different `quantity`/`shippingAddress` than the request it was originally claimed for — a *matching* retry is not an error, see ticket 13) |
+| 400 | `INVALID_ITEM_ID`, `INVALID_QUANTITY`, `INVALID_LATITUDE`, `INVALID_LONGITUDE`, `INVALID_ITEM_NAME`, `INVALID_PRICE_CENTS`, `INVALID_WEIGHT_KG`, `VALIDATION_ERROR` (generic fallback, e.g. a missing `shippingAddress`) |
+| 404 | `ORDER_NOT_FOUND`, `ITEM_NOT_FOUND` (`itemId` doesn't match any row in the `items` catalog) |
+| 409 | `INVENTORY_CONFLICT` (a concurrent submission won a live race for the same stock), `IDEMPOTENCY_KEY_REUSED` (the same `Idempotency-Key` was sent with a different `itemId`/`quantity`/`shippingAddress` than the request it was originally claimed for — a *matching* retry is not an error, see ticket 13) |
 | 422 | `INSUFFICIENT_STOCK`, `SHIPPING_COST_EXCEEDS_15_PERCENT` (the recalculated order fails a business rule) |
 | 500 | `INTERNAL_SERVER_ERROR` — anything unexpected. The real error (message, stack) is logged server-side as structured JSON (see "Observability & production readiness" below); the client never sees more than this generic code/message, regardless of what actually failed (a bug, a database outage, whatever) |
 

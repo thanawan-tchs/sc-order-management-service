@@ -1,4 +1,4 @@
-import { CURRENCY, ITEM_WEIGHT_KG } from "../config";
+import { CURRENCY } from "../config";
 import { IdempotencyKeyConflictError } from "../domain/errors";
 import { toMoney } from "../domain/money";
 import { Order, OrderQuote, OrderStatus, ShippingAllocation } from "../domain/types";
@@ -17,6 +17,10 @@ interface OrderRow {
   id: number;
   order_number: string;
   quantity: number;
+  item_id: string;
+  item_name: string;
+  item_price_cents: number;
+  item_weight_kg: number;
   destination_latitude: number;
   destination_longitude: number;
   subtotal_cents: number;
@@ -49,17 +53,25 @@ function mapAllocationRow(row: AllocationRow): ShippingAllocation {
  * Builds the domain `Order` for a row read back from the database. `valid`/`invalidReasons`
  * aren't persisted columns (ticket 10's schema doesn't list them) — only orders that were valid
  * at submission time are ever written (ticket 11 enforces that), so a row existing at all implies
- * `valid: true` here.
+ * `valid: true` here. `item` is rebuilt from the row's own `item_*` snapshot columns, not looked
+ * up from `items` — the whole point of snapshotting is that a later catalog price change must
+ * never alter what a historical order reports.
  */
 function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
   return {
     quantity: row.quantity,
+    item: {
+      id: row.item_id,
+      name: row.item_name,
+      priceCents: toMoney(row.item_price_cents),
+      weightKg: row.item_weight_kg,
+    },
     shippingAddress: { latitude: row.destination_latitude, longitude: row.destination_longitude },
     subtotalCents: toMoney(row.subtotal_cents),
     discountRate: row.discount_rate,
     discountCents: toMoney(row.discount_cents),
     amountAfterDiscountCents: toMoney(row.amount_after_discount_cents),
-    totalWeightKg: row.quantity * ITEM_WEIGHT_KG,
+    totalWeightKg: row.quantity * row.item_weight_kg,
     shippingCostCents: toMoney(row.shipping_cents),
     totalCents: toMoney(row.total_cents),
     valid: true,
@@ -72,8 +84,9 @@ function mapOrderRow(row: OrderRow, allocations: ShippingAllocation[]): Order {
 }
 
 async function generateOrderNumber(executor: QueryExecutor): Promise<string> {
-  // nextval() is atomic under Postgres MVCC regardless of concurrent callers (see schema.ts) —
-  // this is the whole concurrency-safety mechanism, no application-level locking needed.
+  // nextval() is atomic under Postgres MVCC regardless of concurrent callers (see
+  // infrastructure/db/migrations/0002_orders.ts) — this is the whole concurrency-safety
+  // mechanism, no application-level locking needed.
   const { rows } = await executor.query<{ seq: string }>("SELECT nextval('order_number_seq') AS seq");
   // pg returns bigint as a string (JS numbers can't safely hold the full int8 range) — fine here,
   // we only ever format it, never do arithmetic on it.
@@ -87,8 +100,9 @@ async function generateOrderNumber(executor: QueryExecutor): Promise<string> {
  * This function does not validate the quote (`quote.valid` is the caller's concern — ticket 11's
  * atomic submission only calls this for orders it has already determined are valid) and does not
  * touch inventory — it is pure persistence, matching ticket 10's "Snapshot Principle": whatever
- * pricing/discount/shipping values are on `quote` are exactly what gets stored, so a later change
- * to discount tiers or the shipping rate can never retroactively alter a historical order.
+ * pricing/discount/shipping/item values are on `quote` are exactly what gets stored, so a later
+ * change to discount tiers, the shipping rate, or an item's catalog price/name can never
+ * retroactively alter a historical order.
  *
  * Accepts an optional `executor` (see infrastructure/db/pool.ts's `QueryExecutor`) so ticket 11
  * can run this inside the same transaction as its inventory decrements.
@@ -100,14 +114,19 @@ export async function createOrder(quote: OrderQuote, executor: QueryExecutor = g
 
   const { rows } = await executor.query<{ id: number; created_at: Date }>(
     `INSERT INTO orders (
-       order_number, quantity, destination_latitude, destination_longitude,
+       order_number, quantity, item_id, item_name, item_price_cents, item_weight_kg,
+       destination_latitude, destination_longitude,
        subtotal_cents, discount_rate, discount_cents, amount_after_discount_cents,
        shipping_cents, total_cents, currency, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING id, created_at`,
     [
       orderNumber,
       quote.quantity,
+      quote.item.id,
+      quote.item.name,
+      quote.item.priceCents,
+      quote.item.weightKg,
       quote.shippingAddress.latitude,
       quote.shippingAddress.longitude,
       quote.subtotalCents,
@@ -143,7 +162,8 @@ export async function getOrderByNumber(
   executor: QueryExecutor = getPool()
 ): Promise<Order | undefined> {
   const { rows } = await executor.query<OrderRow>(
-    `SELECT id, order_number, quantity, destination_latitude, destination_longitude,
+    `SELECT id, order_number, quantity, item_id, item_name, item_price_cents, item_weight_kg,
+            destination_latitude, destination_longitude,
             subtotal_cents, discount_rate, discount_cents, amount_after_discount_cents,
             shipping_cents, total_cents, status, created_at
      FROM orders WHERE order_number = $1`,

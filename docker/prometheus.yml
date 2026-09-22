@@ -1,0 +1,18 @@
+global:
+  # Short interval so a curl against the API shows up on the graph within seconds. A real
+  # deployment would typically use 15s-60s.
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: order-management-service
+    metrics_path: /metrics
+    static_configs:
+      # App running on the host via `npm run dev` / `npm start` (the usual local loop).
+      # host.docker.internal is mapped in docker-compose.yml so this also works on Linux.
+      - targets: ["host.docker.internal:3000"]
+        labels:
+          run_mode: host
+      # App running as the compose `app` service (`docker compose up --build app`).
+      - targets: ["app:3000"]
+        labels:
+          run_mode: container

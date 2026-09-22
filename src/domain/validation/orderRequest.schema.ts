@@ -14,6 +14,7 @@ export const shippingAddressSchema = z.object({
 });
 
 export const orderRequestSchema = z.object({
+  itemId: z.string().uuid(),
   quantity: z.number().int().positive(),
   shippingAddress: shippingAddressSchema,
 });

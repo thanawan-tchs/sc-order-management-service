@@ -112,3 +112,14 @@ export class OrderNotFoundError extends AppError {
     this.name = "OrderNotFoundError";
   }
 }
+
+/** Raised when a quote/submit request names an `itemId` that doesn't exist in the catalog. */
+export class ItemNotFoundError extends AppError {
+  readonly status = 404;
+  readonly code = "ITEM_NOT_FOUND";
+
+  constructor(public readonly itemId: string) {
+    super(`No item found with id ${itemId}.`);
+    this.name = "ItemNotFoundError";
+  }
+}

@@ -1,5 +1,5 @@
 import { Order } from "../domain/types";
-import { getOrderByNumber } from "../repositories/orderRepository";
+import * as orderRepository from "../repositories/orderRepository";
 
 /**
  * Ticket 14: retrieves a previously submitted order by its order number.
@@ -14,5 +14,5 @@ import { getOrderByNumber } from "../repositories/orderRepository";
  * caching) a natural home without touching the controller or repository.
  */
 export async function getOrder(orderNumber: string): Promise<Order | undefined> {
-  return getOrderByNumber(orderNumber);
+  return orderRepository.getOrderByNumber(orderNumber);
 }

@@ -2,8 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../../src/app";
 import { closePool, getPool } from "../../src/infrastructure/db/pool";
-import { getOrderByNumber } from "../../src/repositories/orderRepository";
-import { getAllWarehouses, getInventory } from "../../src/repositories/warehouseRepository";
+import * as orderRepository from "../../src/repositories/orderRepository";
+import * as warehouseRepository from "../../src/repositories/warehouseRepository";
 import { resetTestDb } from "../helpers/db";
 import { pointAtDistanceFrom } from "../helpers/geo";
 
@@ -13,6 +13,9 @@ const NYC = { latitude: 40.7128, longitude: -74.006 };
 const LOS_ANGELES_ID = 1;
 const NEW_YORK_ID = 2;
 const ALL_WAREHOUSE_IDS = [1, 2, 3, 4, 5, 6];
+// Matches the one seed item; its id is a UUID (ticket "use item id as uuid format"),
+// generated fresh by resetTestDb on every reset — captured in beforeEach rather than hardcoded.
+let itemId: string;
 
 async function repositionWarehouse(
   id: number,
@@ -27,23 +30,32 @@ async function repositionWarehouse(
     longitude,
     id,
   ]);
-  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2", [stock, id]);
+  await pool.query("UPDATE inventory SET stock = $1 WHERE warehouse_id = $2 AND item_id = $3", [
+    stock,
+    id,
+    itemId,
+  ]);
 }
 
 async function zeroOutStock(ids: number[]): Promise<void> {
   const pool = getPool();
   for (const id of ids) {
-    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1", [id]);
+    await pool.query("UPDATE inventory SET stock = 0 WHERE warehouse_id = $1 AND item_id = $2", [
+      id,
+      itemId,
+    ]);
   }
 }
 
 async function countOrders(): Promise<number> {
-  const { rows } = await getPool().query<{ count: string }>("SELECT COUNT(*)::int AS count FROM orders");
+  const { rows } = await getPool().query<{ count: string }>(
+    "SELECT COUNT(*)::int AS count FROM orders"
+  );
   return Number(rows[0].count);
 }
 
 beforeEach(async () => {
-  await resetTestDb();
+  itemId = await resetTestDb();
 });
 
 afterAll(async () => {
@@ -55,7 +67,7 @@ describe("POST /v1/orders", () => {
     // Same request as the ticket's example: 100 units to a New York City address.
     const response = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 100, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 100, shippingAddress: NYC });
 
     expect(response.status).toBe(201);
     expect(response.body.orderNumber).toMatch(/^ORD-\d{7}$/);
@@ -79,9 +91,9 @@ describe("POST /v1/orders", () => {
     ]);
 
     // Actually persisted, not just echoed back.
-    const fetched = await getOrderByNumber(response.body.orderNumber);
+    const fetched = await orderRepository.getOrderByNumber(response.body.orderNumber);
     expect(fetched?.quantity).toBe(100);
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(578 - 100);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(578 - 100);
   });
 
   it("returns 201 and splits across multiple warehouses when one alone can't fulfill it", async () => {
@@ -89,7 +101,9 @@ describe("POST /v1/orders", () => {
     await repositionWarehouse(NEW_YORK_ID, NYC, 20, 100);
     await zeroOutStock([3, 4, 5, 6]);
 
-    const response = await request(app.callback()).post("/v1/orders").send({ quantity: 20, shippingAddress: NYC });
+    const response = await request(app.callback())
+      .post("/v1/orders")
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
 
     expect(response.status).toBe(201);
     expect(response.body.shipping.allocations).toHaveLength(2);
@@ -100,8 +114,8 @@ describe("POST /v1/orders", () => {
       ])
     );
 
-    expect((await getInventory(LOS_ANGELES_ID))?.stock).toBe(0);
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(95);
+    expect((await warehouseRepository.getInventory(LOS_ANGELES_ID, itemId))?.stock).toBe(0);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(95);
   });
 
   it("returns 400 for a malformed request, with a consistent validation error shape, and creates nothing", async () => {
@@ -109,7 +123,11 @@ describe("POST /v1/orders", () => {
 
     const response = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: -5, shippingAddress: { latitude: 999, longitude: -74.006 } });
+      .send({
+        itemId: itemId,
+        quantity: -5,
+        shippingAddress: { latitude: 999, longitude: -74.006 },
+      });
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("INVALID_QUANTITY");
@@ -123,11 +141,11 @@ describe("POST /v1/orders", () => {
 
     const response = await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 100, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 100, shippingAddress: NYC });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe("INSUFFICIENT_STOCK");
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(5);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(5);
     expect(await countOrders()).toBe(before);
   });
 
@@ -137,11 +155,13 @@ describe("POST /v1/orders", () => {
     await repositionWarehouse(NEW_YORK_ID, NYC, 10000, 10);
     const before = await countOrders();
 
-    const response = await request(app.callback()).post("/v1/orders").send({ quantity: 1, shippingAddress: NYC });
+    const response = await request(app.callback())
+      .post("/v1/orders")
+      .send({ itemId: itemId, quantity: 1, shippingAddress: NYC });
 
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe("SHIPPING_COST_EXCEEDS_15_PERCENT");
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(10);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(10);
     expect(await countOrders()).toBe(before);
   });
 
@@ -151,6 +171,7 @@ describe("POST /v1/orders", () => {
     const response = await request(app.callback())
       .post("/v1/orders")
       .send({
+        itemId: itemId,
         quantity: 10,
         shippingAddress: NYC,
         // None of these should influence the computed order in any way.
@@ -178,8 +199,12 @@ describe("POST /v1/orders", () => {
     const before = await countOrders();
 
     const responses = await Promise.all([
-      request(app.callback()).post("/v1/orders").send({ quantity: 8, shippingAddress: NYC }),
-      request(app.callback()).post("/v1/orders").send({ quantity: 8, shippingAddress: NYC }),
+      request(app.callback())
+        .post("/v1/orders")
+        .send({ itemId: itemId, quantity: 8, shippingAddress: NYC }),
+      request(app.callback())
+        .post("/v1/orders")
+        .send({ itemId: itemId, quantity: 8, shippingAddress: NYC }),
     ]);
 
     const created = responses.filter((r) => r.status === 201);
@@ -190,20 +215,20 @@ describe("POST /v1/orders", () => {
     // (422) — see orderSubmissionService.test.ts for why both are legitimate depending on timing.
     expect([409, 422]).toContain(conflicted[0].status);
 
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(2);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(2);
     expect(await countOrders()).toBe(before + 1);
   });
 
   it("has no side effects on the warehouses read endpoint's underlying data when rejected", async () => {
-    const before = await getAllWarehouses();
-    const stockBefore = await Promise.all(before.map((w) => getInventory(w.id)));
+    const before = await warehouseRepository.getAllWarehouses();
+    const stockBefore = await Promise.all(before.map((w) => warehouseRepository.getInventory(w.id, itemId)));
 
     await request(app.callback())
       .post("/v1/orders")
-      .send({ quantity: 999999, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 999999, shippingAddress: NYC });
 
-    const after = await getAllWarehouses();
-    const stockAfter = await Promise.all(after.map((w) => getInventory(w.id)));
+    const after = await warehouseRepository.getAllWarehouses();
+    const stockAfter = await Promise.all(after.map((w) => warehouseRepository.getInventory(w.id, itemId)));
     expect(stockAfter).toEqual(stockBefore);
   });
 });
@@ -216,11 +241,11 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     const first = await request(app.callback())
       .post("/v1/orders")
       .set("Idempotency-Key", "http-retry-1")
-      .send({ quantity: 20, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     const second = await request(app.callback())
       .post("/v1/orders")
       .set("Idempotency-Key", "http-retry-1")
-      .send({ quantity: 20, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
@@ -228,14 +253,18 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     expect(second.body).toEqual(first.body);
 
     expect(await countOrders()).toBe(before + 1);
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
   });
 
   it("treats requests with no Idempotency-Key header as always distinct", async () => {
     await repositionWarehouse(NEW_YORK_ID, NYC, 10, 100);
 
-    const first = await request(app.callback()).post("/v1/orders").send({ quantity: 5, shippingAddress: NYC });
-    const second = await request(app.callback()).post("/v1/orders").send({ quantity: 5, shippingAddress: NYC });
+    const first = await request(app.callback())
+      .post("/v1/orders")
+      .send({ itemId: itemId, quantity: 5, shippingAddress: NYC });
+    const second = await request(app.callback())
+      .post("/v1/orders")
+      .send({ itemId: itemId, quantity: 5, shippingAddress: NYC });
 
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
@@ -250,18 +279,18 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
       request(app.callback())
         .post("/v1/orders")
         .set("Idempotency-Key", "http-concurrent-1")
-        .send({ quantity: 20, shippingAddress: NYC }),
+        .send({ itemId: itemId, quantity: 20, shippingAddress: NYC }),
       request(app.callback())
         .post("/v1/orders")
         .set("Idempotency-Key", "http-concurrent-1")
-        .send({ quantity: 20, shippingAddress: NYC }),
+        .send({ itemId: itemId, quantity: 20, shippingAddress: NYC }),
     ]);
 
     expect(a.status).toBe(201);
     expect(b.status).toBe(201);
     expect(a.body.orderNumber).toBe(b.body.orderNumber);
     expect(await countOrders()).toBe(before + 1);
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
   });
 
   it("returns 409 IDEMPOTENCY_KEY_REUSED when the same key is sent with a different request body", async () => {
@@ -270,17 +299,17 @@ describe("POST /v1/orders — Idempotency-Key (ticket 13)", () => {
     const first = await request(app.callback())
       .post("/v1/orders")
       .set("Idempotency-Key", "http-reused-key")
-      .send({ quantity: 20, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 20, shippingAddress: NYC });
     expect(first.status).toBe(201);
 
     const second = await request(app.callback())
       .post("/v1/orders")
       .set("Idempotency-Key", "http-reused-key")
-      .send({ quantity: 21, shippingAddress: NYC });
+      .send({ itemId: itemId, quantity: 21, shippingAddress: NYC });
 
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
     expect(await countOrders()).toBe(1);
-    expect((await getInventory(NEW_YORK_ID))?.stock).toBe(80);
+    expect((await warehouseRepository.getInventory(NEW_YORK_ID, itemId))?.stock).toBe(80);
   });
 });

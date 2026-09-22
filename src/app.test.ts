@@ -72,6 +72,9 @@ describe("GET /metrics", () => {
     const beforeValue = (await before?.get())?.values[0]?.value ?? 0;
 
     await request(app.callback()).post("/v1/orders/quote").send({
+      // Doesn't need to be a real item — quoteRequestsTotal increments before any DB lookup, as
+      // long as the body passes schema validation (a UUID-shaped itemId).
+      itemId: "00000000-0000-0000-0000-000000000000",
       quantity: 1,
       shippingAddress: { latitude: 0, longitude: 0 },
     });

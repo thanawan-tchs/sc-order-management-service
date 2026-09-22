@@ -1,12 +1,13 @@
 import { Money } from "./money";
 import { InvalidOrderReason } from "./validity";
 
-/** A sellable product. Single SKU for v1, but modeled as its own entity for extensibility. */
+/** A sellable product, looked up by client-chosen `itemId` (the `items` table). `id` is a UUID
+ *  (Postgres's `gen_random_uuid()`, ticket "use item id as uuid format"), not an integer. */
 export interface Item {
-  id: number;
+  id: string;
   name: string;
   priceCents: Money;
-  weightGrams: number;
+  weightKg: number;
 }
 
 /** A physical fulfillment location. Stock lives separately, in Inventory (see SYSTEM-DESIGN.md). */
@@ -20,7 +21,7 @@ export interface Warehouse {
 /** Stock of a given Item at a given Warehouse. */
 export interface Inventory {
   warehouseId: number;
-  itemId: number;
+  itemId: string;
   stock: number;
 }
 
@@ -40,9 +41,14 @@ export interface ShippingAllocation {
 /**
  * The full computed breakdown for an order request — what `POST /v1/orders/quote` returns, and
  * what `POST /v1/orders` must recompute (against fresh stock) before persisting as an Order.
+ *
+ * `item` is a full snapshot (id/name/price/weight), not just an id — same Snapshot Principle as
+ * pricing/discount/shipping below: a later price change to the item in the catalog must never
+ * retroactively alter a historical order's displayed details.
  */
 export interface OrderQuote {
   quantity: number;
+  item: Item;
   shippingAddress: ShippingAddress;
   subtotalCents: Money;
   discountRate: number;

@@ -25,28 +25,17 @@ export const config = {
   shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 10_000),
 };
 
-/**
- * Single-SKU v1: there is exactly one sellable item, so it's referenced by this constant rather
- * than looked up. See domain/types.ts's `Inventory` (which models a warehouse/item stock pair
- * for future multi-SKU extensibility) and ticket 04 (pricing), which treats price/weight as
- * business constants rather than persisted, queried data.
- */
-export const DEFAULT_ITEM_ID = 1;
-
-/**
- * The single v1 SKU's price/weight. Business constants, not DB-backed (ticket 04 treats them as
- * pure inputs to pricing logic; ticket 06/07 will reuse ITEM_WEIGHT_KG the same way for shipping
- * cost) — kept here once so both consumers reference the same numbers.
- */
-export const ITEM_UNIT_PRICE_CENTS = 15000; // $150.00
-export const ITEM_WEIGHT_KG = 0.365;
-
 /** $0.01 per kilogram per kilometer, expressed in cents so shipping cost stays integer-cent-based. */
 export const SHIPPING_RATE_CENTS_PER_KG_KM = 1;
 
 /** Single-currency v1; stored per order (ticket 10) rather than assumed, so a multi-currency
  *  future doesn't require a migration to add the column. */
 export const CURRENCY = "USD";
+
+/** The one item `seed.ts` inserts if `items` is empty — same values migration 0006 uses to
+ *  backfill a pre-existing database's `inventory`/`orders` rows, so a fresh database (test or
+ *  dev) and a database upgraded from before the `items` table both converge on this one item. */
+export const SEED_ITEMS = [{ name: "Standard Unit", priceCents: 15000, weightKg: 0.365 }];
 
 export const SEED_WAREHOUSES = [
   { name: "Los Angeles", latitude: 33.9425, longitude: -118.408056, stock: 355 },

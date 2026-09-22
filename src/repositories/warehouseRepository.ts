@@ -1,6 +1,8 @@
+import { config } from "@config";
 import exception from "@domain/errors";
 import { Inventory, Warehouse } from "@domain/model/warehouse";
 import { QueryExecutor, getPool } from "@infrastructure/db/pool";
+import { readThrough } from "@infrastructure/cache/cache";
 
 interface WarehouseRow {
   id: number;
@@ -24,21 +26,25 @@ function mapInventoryRow(row: InventoryRow): Inventory {
 }
 
 export async function getAllWarehouses(executor: QueryExecutor = getPool()): Promise<Warehouse[]> {
-  const { rows } = await executor.query<WarehouseRow>(
-    "SELECT id, name, latitude, longitude FROM warehouses ORDER BY id"
-  );
-  return rows.map(mapWarehouseRow);
+  return readThrough("warehouses:all", config.cacheTtlSeconds, async () => {
+    const { rows } = await executor.query<WarehouseRow>(
+      "SELECT id, name, latitude, longitude FROM warehouses ORDER BY id"
+    );
+    return rows.map(mapWarehouseRow);
+  });
 }
 
 export async function getWarehouse(
   id: number,
   executor: QueryExecutor = getPool()
 ): Promise<Warehouse | undefined> {
-  const { rows } = await executor.query<WarehouseRow>(
-    "SELECT id, name, latitude, longitude FROM warehouses WHERE id = $1",
-    [id]
-  );
-  return rows[0] ? mapWarehouseRow(rows[0]) : undefined;
+  return readThrough(`warehouse:${id}`, config.cacheTtlSeconds, async () => {
+    const { rows } = await executor.query<WarehouseRow>(
+      "SELECT id, name, latitude, longitude FROM warehouses WHERE id = $1",
+      [id]
+    );
+    return rows[0] ? mapWarehouseRow(rows[0]) : undefined;
+  });
 }
 
 export async function getInventory(

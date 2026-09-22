@@ -1,5 +1,6 @@
 import { createApp } from "./app";
 import { config } from "./config";
+import { closeRedisClient } from "./infrastructure/cache/redisClient";
 import { closePool } from "./infrastructure/db/pool";
 import { migrate } from "./infrastructure/db/migrate";
 import { seed } from "./infrastructure/db/seed";
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   const shutdown = createShutdownHandler({
     server,
     closePool,
+    closeCache: closeRedisClient,
     exit: (code) => process.exit(code),
     logger,
     timeoutMs: config.shutdownTimeoutMs,

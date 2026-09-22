@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { toMoney } from "@domain/money";
+import * as redisClientModule from "@infrastructure/cache/redisClient";
 import { QueryExecutor } from "@infrastructure/db/pool";
 import itemRepository from "./itemRepository";
 
@@ -10,6 +11,11 @@ function fakeExecutor(query: sinon.SinonStub): QueryExecutor {
 
 const ITEM_ID = "11111111-1111-1111-1111-111111111111";
 const ITEM_ROW = { id: ITEM_ID, name: "Standard Unit", price: 15000, currency: "USD", weight_kg: 0.365 };
+const ITEM = { id: ITEM_ID, name: "Standard Unit", price: 15000, currency: "USD", weightKg: 0.365 };
+
+afterEach(() => {
+  sinon.restore();
+});
 
 describe("getItem", () => {
   it("retrieves an item by id, mapping snake_case columns to the domain Item shape", async () => {
@@ -20,13 +26,36 @@ describe("getItem", () => {
     expect(
       query.calledWith("SELECT id, name, price, currency, weight_kg FROM items WHERE id = $1", [ITEM_ID])
     ).to.equal(true);
-    expect(item).to.deep.equal({ id: ITEM_ID, name: "Standard Unit", price: 15000, currency: "USD", weightKg: 0.365 });
+    expect(item).to.deep.equal(ITEM);
   });
 
   it("returns undefined when no row matches", async () => {
     const query = sinon.stub().resolves({ rows: [], rowCount: 0 });
 
     expect(await itemRepository.getItem("unknown-id", fakeExecutor(query))).to.equal(undefined);
+  });
+
+  it("serves a cache hit without querying the database, when a cache client is configured", async () => {
+    const cacheGet = sinon.stub().resolves(JSON.stringify(ITEM));
+    sinon.stub(redisClientModule, "getRedisClient").returns({ get: cacheGet, set: sinon.stub() } as never);
+    const query = sinon.stub();
+
+    const item = await itemRepository.getItem(ITEM_ID, fakeExecutor(query));
+
+    expect(item).to.deep.equal(ITEM);
+    expect(query.called).to.equal(false);
+    expect(cacheGet.calledOnceWith(`item:${ITEM_ID}`)).to.equal(true);
+  });
+
+  it("writes through to the cache on a miss, when a cache client is configured", async () => {
+    const cacheSet = sinon.stub().resolves("OK");
+    sinon.stub(redisClientModule, "getRedisClient").returns({ get: sinon.stub().resolves(null), set: cacheSet } as never);
+    const query = sinon.stub().resolves({ rows: [ITEM_ROW], rowCount: 1 });
+
+    const item = await itemRepository.getItem(ITEM_ID, fakeExecutor(query));
+
+    expect(item).to.deep.equal(ITEM);
+    expect(cacheSet.calledOnceWith(`item:${ITEM_ID}`, JSON.stringify(ITEM), "EX", sinon.match.number)).to.equal(true);
   });
 });
 

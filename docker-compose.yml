@@ -16,22 +16,29 @@ services:
       timeout: 3s
       retries: 20
 
+  # Optional read-through cache (see REDIS_URL in .env.example). Not required for `npm run dev`
+  # or the test suites — the app runs uncached if this isn't started.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   # Not part of the usual local dev loop (`npm run dev` against `npm run db:up` is faster —
   # no image rebuild on every change). This is here so the Dockerfile itself is exercised
   # end-to-end: `docker compose up --build app` runs the whole stack from the built image.
-  app:
-    build: .
-    environment:
-      PORT: 3000
-      NODE_ENV: production
-      # Talks to the `db` service by its Docker-network name, on the container's own port 5432 —
-      # not the host-mapped 5433 above, which only matters from outside this network.
-      DATABASE_URL: postgres://app:app@db:5432/orders
-    ports:
-      - "3000:3000"
-    depends_on:
-      db:
-        condition: service_healthy
+  # app:
+  #   build: .
+  #   environment:
+  #     PORT: 3000
+  #     NODE_ENV: production
+  #     # Talks to the `db` service by its Docker-network name, on the container's own port 5432 —
+  #     # not the host-mapped 5433 above, which only matters from outside this network.
+  #     DATABASE_URL: postgres://app:app@db:5432/orders
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
 
 volumes:
   pgdata:

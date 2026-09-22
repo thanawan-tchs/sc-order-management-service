@@ -2,12 +2,17 @@ import { expect } from "chai";
 import sinon from "sinon";
 import { SEED_WAREHOUSES } from "@config";
 import exception from "@domain/errors";
+import * as redisClientModule from "@infrastructure/cache/redisClient";
 import { QueryExecutor } from "@infrastructure/db/pool";
 import warehouseRepository from "./warehouseRepository";
 
 function fakeExecutor(query: sinon.SinonStub): QueryExecutor {
   return { query } as unknown as QueryExecutor;
 }
+
+afterEach(() => {
+  sinon.restore();
+});
 
 const LOS_ANGELES_ID = 1;
 const LOS_ANGELES_STOCK = SEED_WAREHOUSES[0].stock;
@@ -34,6 +39,24 @@ describe("getAllWarehouses", () => {
     const losAngeles = warehouses.find((w) => w.id === LOS_ANGELES_ID);
     expect(losAngeles).to.deep.include({ name: "Los Angeles", latitude: 33.9425, longitude: -118.408056 });
   });
+
+  it("serves a cache hit without querying the database, when a cache client is configured", async () => {
+    const cached = WAREHOUSE_ROWS.map((row) => ({
+      id: row.id,
+      name: row.name,
+      latitude: row.latitude,
+      longitude: row.longitude,
+    }));
+    const cacheGet = sinon.stub().resolves(JSON.stringify(cached));
+    sinon.stub(redisClientModule, "getRedisClient").returns({ get: cacheGet, set: sinon.stub() } as never);
+    const query = sinon.stub();
+
+    const warehouses = await warehouseRepository.getAllWarehouses(fakeExecutor(query));
+
+    expect(warehouses).to.deep.equal(cached);
+    expect(query.called).to.equal(false);
+    expect(cacheGet.calledOnceWith("warehouses:all")).to.equal(true);
+  });
 });
 
 describe("getWarehouse", () => {
@@ -53,6 +76,19 @@ describe("getWarehouse", () => {
     const warehouse = await warehouseRepository.getWarehouse(999, fakeExecutor(query));
 
     expect(warehouse).to.equal(undefined);
+  });
+
+  it("writes through to the cache on a miss, when a cache client is configured", async () => {
+    const cacheSet = sinon.stub().resolves("OK");
+    sinon.stub(redisClientModule, "getRedisClient").returns({ get: sinon.stub().resolves(null), set: cacheSet } as never);
+    const query = sinon.stub().resolves({ rows: [WAREHOUSE_ROWS[0]], rowCount: 1 });
+
+    const warehouse = await warehouseRepository.getWarehouse(LOS_ANGELES_ID, fakeExecutor(query));
+
+    expect(warehouse?.name).to.equal("Los Angeles");
+    expect(
+      cacheSet.calledOnceWith(`warehouse:${LOS_ANGELES_ID}`, JSON.stringify(warehouse), "EX", sinon.match.number)
+    ).to.equal(true);
   });
 });
 

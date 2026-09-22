@@ -1,6 +1,8 @@
+import { config } from "@config";
 import { Currency, Money, toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { QueryExecutor, getPool } from "@infrastructure/db/pool";
+import { readThrough } from "@infrastructure/cache/cache";
 
 interface ItemRow {
   id: string;
@@ -15,11 +17,13 @@ function mapItemRow(row: ItemRow): Item {
 }
 
 export async function getItem(id: string, executor: QueryExecutor = getPool()): Promise<Item | undefined> {
-  const { rows } = await executor.query<ItemRow>(
-    "SELECT id, name, price, currency, weight_kg FROM items WHERE id = $1",
-    [id]
-  );
-  return rows[0] ? mapItemRow(rows[0]) : undefined;
+  return readThrough(`item:${id}`, config.cacheTtlSeconds, async () => {
+    const { rows } = await executor.query<ItemRow>(
+      "SELECT id, name, price, currency, weight_kg FROM items WHERE id = $1",
+      [id]
+    );
+    return rows[0] ? mapItemRow(rows[0]) : undefined;
+  });
 }
 
 export async function getAllItems(executor: QueryExecutor = getPool()): Promise<Item[]> {

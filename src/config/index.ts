@@ -16,6 +16,9 @@ export const config = {
   headersTimeoutMs: Number(process.env.HEADERS_TIMEOUT_MS ?? 31_000),
 
   shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 10_000),
+
+  redisUrl: process.env.REDIS_URL,
+  cacheTtlSeconds: Number(process.env.CACHE_TTL_SECONDS ?? 60),
 };
 
 export const SHIPPING_RATE_PER_KG_KM = 1;

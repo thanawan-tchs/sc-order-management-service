@@ -10,6 +10,7 @@ interface OrderResponseBody {
     id: string;
     name: string;
     price: number;
+    currency: string;
   };
   quantity: number;
   pricing: {
@@ -40,6 +41,7 @@ function toOrderResponse(order: Order): OrderResponseBody {
       id: order.item.id,
       name: order.item.name,
       price: order.item.price,
+      currency: order.item.currency,
     },
     quantity: order.quantity,
     pricing: {

@@ -9,6 +9,7 @@ interface QuoteResponseBody {
     id: string;
     name: string;
     price: number;
+    currency: string;
   };
   quantity: number;
   pricing: {
@@ -40,6 +41,7 @@ function toQuoteResponse(quote: OrderQuote): QuoteResponseBody {
       id: quote.item.id,
       name: quote.item.name,
       price: quote.item.price,
+      currency: quote.item.currency,
     },
     quantity: quote.quantity,
     pricing: {

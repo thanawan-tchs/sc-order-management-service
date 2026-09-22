@@ -10,6 +10,7 @@ interface OrderDetailResponseBody {
     id: string;
     name: string;
     price: number;
+    currency: string;
   };
   quantity: number;
   destination: { latitude: number; longitude: number };
@@ -42,6 +43,7 @@ function toOrderDetailResponse(order: Order): OrderDetailResponseBody {
       id: order.item.id,
       name: order.item.name,
       price: order.item.price,
+      currency: order.item.currency,
     },
     quantity: order.quantity,
     destination: order.shippingAddress,

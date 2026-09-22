@@ -226,7 +226,7 @@ curl -X POST http://localhost:3000/v1/orders/quote \
 ```json
 {
   "valid": true,
-  "item": { "id": "<uuid>", "name": "Standard Unit", "price": 15000 },
+  "item": { "id": "<uuid>", "name": "Standard Unit", "price": 15000, "currency": "USD" },
   "quantity": 50,
   "pricing": { "subtotal": 750000, "discountRate": 0.05, "discount": 37500, "amountAfterDiscount": 712500, "shippingCost": 4200, "total": 716700, "currency": "USD" },
   "shipping": { "totalWeightKg": 18.25, "allocations": [{ "warehouseId": 2, "quantity": 50, "distanceKm": 8.4, "shippingCost": 4200, "currency": "USD" }] },

@@ -1,4 +1,4 @@
-import { IdempotencyKeyConflictError } from "@domain/errors";
+import exception from "@domain/errors";
 import { Currency, toMoney } from "@domain/money";
 import { Order, OrderQuote, OrderStatus } from "@domain/model/order";
 import { ShippingAllocation } from "@domain/model/shipping";
@@ -189,7 +189,7 @@ export async function recordIdempotencyKey(
     ]);
   } catch (error) {
     if (isUniqueViolation(error)) {
-      throw new IdempotencyKeyConflictError(idempotencyKey);
+      throw new exception.IdempotencyKeyConflictError(idempotencyKey);
     }
     throw error;
   }

@@ -1,7 +1,7 @@
 import { Context } from "koa";
 import { z } from "zod";
 import itemService from "@application/items/itemService";
-import { ItemNotFoundError, ValidationError } from "@domain/errors";
+import exception from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { ItemRequestInput } from "@domain/validation/itemRequest.schema";
@@ -52,12 +52,12 @@ export async function getItem(ctx: Context): Promise<void> {
   ctx.state.itemId = itemId;
 
   if (!itemIdParamSchema.safeParse(itemId).success) {
-    throw new ValidationError("INVALID_ITEM_ID", "itemId must be a valid UUID.");
+    throw new exception.ValidationError("INVALID_ITEM_ID", "itemId must be a valid UUID.");
   }
 
   const item = await itemService.getItem(itemId);
   if (!item) {
-    throw new ItemNotFoundError(itemId);
+    throw new exception.ItemNotFoundError(itemId);
   }
 
   ctx.status = 200;

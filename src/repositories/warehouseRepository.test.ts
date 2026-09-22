@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { SEED_WAREHOUSES } from "@config";
-import { InsufficientStockError } from "@domain/errors";
+import exception from "@domain/errors";
 import { QueryExecutor } from "@infrastructure/db/pool";
 import warehouseRepository from "./warehouseRepository";
 
@@ -101,14 +101,14 @@ describe("decrementInventory", () => {
 
     await expect(
       warehouseRepository.decrementInventory(LOS_ANGELES_ID, ITEM_ID, LOS_ANGELES_STOCK + 1, fakeExecutor(query))
-    ).to.be.rejectedWith(InsufficientStockError);
+    ).to.be.rejectedWith(exception.InsufficientStockError);
   });
 
   it("throws InsufficientStockError for a nonexistent warehouse or item (same zero-row-affected signal)", async () => {
     const query = sinon.stub().resolves({ rowCount: 0 });
 
     await expect(warehouseRepository.decrementInventory(999, ITEM_ID, 1, fakeExecutor(query))).to.be.rejectedWith(
-      InsufficientStockError
+      exception.InsufficientStockError
     );
   });
 
@@ -146,7 +146,7 @@ describe("decrementInventory", () => {
     expect(failed).to.have.lengthOf(5);
     for (const failure of failed) {
       if (failure.status === "rejected") {
-        expect(failure.reason).to.be.instanceOf(InsufficientStockError);
+        expect(failure.reason).to.be.instanceOf(exception.InsufficientStockError);
       }
     }
     expect(stock).to.equal(0);

@@ -1,6 +1,6 @@
 import { Context, Next } from "koa";
 import { ZodIssue, ZodSchema } from "zod";
-import { ValidationError } from "@domain/errors";
+import exception, { ValidationError } from "@domain/errors";
 import { CURRENCIES } from "@domain/money";
 
 // TODO: to be improve
@@ -9,42 +9,42 @@ function toValidationError(issues: ZodIssue[]): ValidationError {
   const path = issue.path.join(".");
 
   if (path === "itemId") {
-    return new ValidationError("INVALID_ITEM_ID", "itemId is required and must be a valid UUID.");
+    return new exception.ValidationError("INVALID_ITEM_ID", "itemId is required and must be a valid UUID.");
   }
   if (path === "quantity") {
-    return new ValidationError("INVALID_QUANTITY", "Quantity is required and must be a positive integer.");
+    return new exception.ValidationError("INVALID_QUANTITY", "Quantity is required and must be a positive integer.");
   }
   if (path === "shippingAddress.latitude") {
-    return new ValidationError(
+    return new exception.ValidationError(
       "INVALID_LATITUDE",
       "Latitude is required and must be between -90 and 90."
     );
   }
   if (path === "shippingAddress.longitude") {
-    return new ValidationError(
+    return new exception.ValidationError(
       "INVALID_LONGITUDE",
       "Longitude is required and must be between -180 and 180."
     );
   }
   if (path === "name") {
-    return new ValidationError("INVALID_ITEM_NAME", "name is required and must be a non-empty string.");
+    return new exception.ValidationError("INVALID_ITEM_NAME", "name is required and must be a non-empty string.");
   }
   if (path === "price") {
-    return new ValidationError(
+    return new exception.ValidationError(
       "INVALID_PRICE",
       "price is required and must be a positive integer."
     );
   }
   if (path === "currency") {
-    return new ValidationError(
+    return new exception.ValidationError(
       "INVALID_CURRENCY",
       `currency is required and must be one of: ${CURRENCIES.join(", ")}.`
     );
   }
   if (path === "weightKg") {
-    return new ValidationError("INVALID_WEIGHT_KG", "weightKg is required and must be a positive number.");
+    return new exception.ValidationError("INVALID_WEIGHT_KG", "weightKg is required and must be a positive number.");
   }
-  return new ValidationError("VALIDATION_ERROR", issue.message);
+  return new exception.ValidationError("VALIDATION_ERROR", issue.message);
 }
 
 export function validateBody<T>(schema: ZodSchema<T>) {

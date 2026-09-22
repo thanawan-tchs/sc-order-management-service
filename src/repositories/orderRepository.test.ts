@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import sinon from "sinon";
-import { IdempotencyKeyConflictError } from "@domain/errors";
+import exception from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { OrderQuote } from "@domain/model/order";
@@ -286,7 +286,7 @@ describe("recordIdempotencyKey / findOrderByIdempotencyKey", () => {
     await orderRepository.recordIdempotencyKey("dup-key", first.orderNumber, db);
 
     await expect(orderRepository.recordIdempotencyKey("dup-key", second.orderNumber, db)).to.be.rejectedWith(
-      IdempotencyKeyConflictError
+      exception.IdempotencyKeyConflictError
     );
 
     expect((await orderRepository.findOrderByIdempotencyKey("dup-key", db))?.orderNumber).to.equal(

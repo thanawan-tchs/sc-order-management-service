@@ -1,4 +1,4 @@
-import { IdempotencyKeyConflictError, IdempotencyKeyReusedError, OrderSubmissionError } from "@domain/errors";
+import exception from "@domain/errors";
 import { Order } from "@domain/model/order";
 import { ShippingAddress } from "@domain/model/shipping";
 import { QueryExecutor } from "@infrastructure/db/pool";
@@ -33,7 +33,7 @@ async function checkIdempotencyKey(
   if (!existing) return undefined;
 
   if (!matchesClaimedOrder(existing, input)) {
-    throw new IdempotencyKeyReusedError(idempotencyKey);
+    throw new exception.IdempotencyKeyReusedError(idempotencyKey);
   }
   return existing;
 }
@@ -59,7 +59,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
       });
 
       if (!quote.valid) {
-        throw new OrderSubmissionError(quote.invalidReasons);
+        throw new exception.OrderSubmissionError(quote.invalidReasons);
       }
 
       for (const line of quote.allocations) {
@@ -75,7 +75,7 @@ export async function submitOrder(input: OrderSubmissionInput): Promise<Order> {
       return order;
     }, "order_submission");
   } catch (error) {
-    if (idempotencyKey && error instanceof IdempotencyKeyConflictError) {
+    if (idempotencyKey && error instanceof exception.IdempotencyKeyConflictError) {
       const winner = await checkIdempotencyKey(idempotencyKey, input);
       if (winner) return winner;
     }

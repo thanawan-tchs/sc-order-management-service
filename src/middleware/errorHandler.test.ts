@@ -3,7 +3,7 @@ import Koa, { Context } from "koa";
 import Router from "@koa/router";
 import request from "supertest";
 import sinon from "sinon";
-import { OrderNotFoundError, ValidationError } from "@domain/errors";
+import exception from "@domain/errors";
 import { logger } from "@observability/logger";
 import { errorHandler } from "./errorHandler";
 
@@ -26,7 +26,7 @@ describe("errorHandler middleware", () => {
 
   it("maps a known AppError to its own status, code, and message", async () => {
     const app = buildApp(() => {
-      throw new OrderNotFoundError("ORD-1234567");
+      throw new exception.OrderNotFoundError("ORD-1234567");
     });
 
     const response = await request(app.callback()).get("/test");
@@ -42,7 +42,7 @@ describe("errorHandler middleware", () => {
 
   it("maps a ValidationError with its per-instance code", async () => {
     const app = buildApp(() => {
-      throw new ValidationError("INVALID_QUANTITY", "Quantity is required and must be a positive integer.");
+      throw new exception.ValidationError("INVALID_QUANTITY", "Quantity is required and must be a positive integer.");
     });
 
     const response = await request(app.callback()).get("/test");

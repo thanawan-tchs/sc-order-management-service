@@ -1,6 +1,6 @@
 import { SHIPPING_RATE_PER_KG_KM } from "@config";
 import { WarehouseCandidate, allocateOrder } from "@domain/allocation";
-import { ItemNotFoundError } from "@domain/errors";
+import exception from "@domain/errors";
 import { Money, toMoney } from "@domain/money";
 import {
   calculateAmountAfterDiscount,
@@ -58,7 +58,7 @@ export async function getOrderQuote(
 ): Promise<OrderQuote> {
   const item = await deps.getItem(input.itemId);
   if (!item) {
-    throw new ItemNotFoundError(input.itemId);
+    throw new exception.ItemNotFoundError(input.itemId);
   }
 
   const subtotal = calculateSubtotal(input.quantity, item.price);

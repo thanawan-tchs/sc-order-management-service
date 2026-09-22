@@ -1,12 +1,12 @@
 import { Context, Next } from "koa";
-import { AppError } from "@domain/errors";
+import exception from "@domain/errors";
 import { logger } from "@observability/logger";
 
 export async function errorHandler(ctx: Context, next: Next): Promise<void> {
   try {
     await next();
   } catch (error) {
-    if (error instanceof AppError) {
+    if (error instanceof exception.AppError) {
       ctx.state.errorCode = error.code;
       ctx.status = error.status;
       ctx.body = { error: { code: error.code, message: error.message } };

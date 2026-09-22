@@ -1,4 +1,4 @@
-import { InsufficientStockError } from "@domain/errors";
+import exception from "@domain/errors";
 import { Inventory, Warehouse } from "@domain/model/warehouse";
 import { QueryExecutor, getPool } from "@infrastructure/db/pool";
 
@@ -69,7 +69,7 @@ export async function decrementInventory(
   );
 
   if (result.rowCount !== 1) {
-    throw new InsufficientStockError(warehouseId, quantity);
+    throw new exception.InsufficientStockError(warehouseId, quantity);
   }
 }
 

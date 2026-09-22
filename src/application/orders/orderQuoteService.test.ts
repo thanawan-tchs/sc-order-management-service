@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { getOrderQuote, OrderQuoteDependencies } from "./orderQuoteService";
 import { WarehouseCandidate } from "@domain/allocation";
-import { ItemNotFoundError } from "@domain/errors";
+import exception from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { pointAtDistanceFromOrigin } from "@tests/helpers/geo";
@@ -62,7 +62,7 @@ describe("getOrderQuote", () => {
 
     await expect(
       getOrderQuote({ itemId: "unknown-item-id", quantity: 10, shippingAddress: DESTINATION }, deps)
-    ).to.be.rejectedWith(ItemNotFoundError);
+    ).to.be.rejectedWith(exception.ItemNotFoundError);
     expect(readCandidatesCalled).to.equal(false);
   });
 

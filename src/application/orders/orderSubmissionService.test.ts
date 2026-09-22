@@ -1,12 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { submitOrder } from "./orderSubmissionService";
-import {
-  IdempotencyKeyConflictError,
-  IdempotencyKeyReusedError,
-  InsufficientStockError,
-  OrderSubmissionError,
-} from "@domain/errors";
+import exception, { OrderSubmissionError } from "@domain/errors";
 import { toMoney } from "@domain/money";
 import { Item } from "@domain/model/item";
 import { Order } from "@domain/model/order";
@@ -140,7 +135,7 @@ describe("submitOrder — invalid orders never touch inventory or create a row",
     const createOrderStub = sinon.stub(orderRepository, "createOrder").resolves(buildOrder());
 
     await expect(submitOrder({ itemId: ITEM_ID, quantity: 100, shippingAddress: DESTINATION })).to.be.rejectedWith(
-      OrderSubmissionError
+      exception.OrderSubmissionError
     );
 
     expect(decrementStub.called).to.equal(false);
@@ -162,7 +157,7 @@ describe("submitOrder — invalid orders never touch inventory or create a row",
       caught = error;
     }
 
-    expect(caught).to.be.instanceOf(OrderSubmissionError);
+    expect(caught).to.be.instanceOf(exception.OrderSubmissionError);
     expect((caught as OrderSubmissionError).invalidReasons).to.deep.equal(["SHIPPING_COST_EXCEEDS_15_PERCENT"]);
     expect(decrementStub.called).to.equal(false);
     expect(createOrderStub.called).to.equal(false);
@@ -190,7 +185,7 @@ describe("submitOrder — concurrency", () => {
         const current = stock[warehouseId];
         if (current < quantity) {
           release();
-          throw new InsufficientStockError(warehouseId, quantity);
+          throw new exception.InsufficientStockError(warehouseId, quantity);
         }
         client.onCommit(() => {
           stock[warehouseId] = current - quantity;
@@ -210,7 +205,7 @@ describe("submitOrder — concurrency", () => {
     expect(rejected).to.have.lengthOf(1);
     if (rejected[0].status === "rejected") {
       const isExpectedErrorType =
-        rejected[0].reason instanceof InsufficientStockError || rejected[0].reason instanceof OrderSubmissionError;
+        rejected[0].reason instanceof exception.InsufficientStockError || rejected[0].reason instanceof exception.OrderSubmissionError;
       expect(isExpectedErrorType).to.equal(true);
     }
     expect(stock[LOS_ANGELES_ID]).to.equal(2);
@@ -247,7 +242,7 @@ describe("submitOrder — concurrency", () => {
           const current = stock[warehouseId];
           if (current < quantity) {
             release();
-            throw new InsufficientStockError(warehouseId, quantity);
+            throw new exception.InsufficientStockError(warehouseId, quantity);
           }
           client.onCommit(() => {
             stock[warehouseId] = current - quantity;
@@ -269,8 +264,8 @@ describe("submitOrder — concurrency", () => {
       const rejectedResult = results[rejectedIndex];
       if (rejectedResult.status === "rejected") {
         const isExpectedErrorType =
-          rejectedResult.reason instanceof InsufficientStockError ||
-          rejectedResult.reason instanceof OrderSubmissionError;
+          rejectedResult.reason instanceof exception.InsufficientStockError ||
+          rejectedResult.reason instanceof exception.OrderSubmissionError;
         expect(isExpectedErrorType).to.equal(true);
       }
 
@@ -356,7 +351,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
         const release = await keyLock.acquire(key);
         if (claimedKeys.has(key)) {
           release();
-          throw new IdempotencyKeyConflictError(key);
+          throw new exception.IdempotencyKeyConflictError(key);
         }
         client.onCommit(() => claimedKeys.set(key, orderNumber));
         client.onSettle(release);
@@ -387,7 +382,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
 
     await expect(
       submitOrder({ itemId: ITEM_ID, quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "retry-after-failure" })
-    ).to.be.rejectedWith(OrderSubmissionError);
+    ).to.be.rejectedWith(exception.OrderSubmissionError);
     expect(claimedOrder).to.equal(undefined);
 
     inventoryStub.resolves({ warehouseId: LOS_ANGELES_ID, itemId: ITEM_ID, stock: 100 });
@@ -442,7 +437,7 @@ describe("submitOrder — idempotency (ticket 13)", () => {
         const current = stock[warehouseId];
         if (current < quantity) {
           release();
-          throw new InsufficientStockError(warehouseId, quantity);
+          throw new exception.InsufficientStockError(warehouseId, quantity);
         }
         client.onCommit(() => {
           stock[warehouseId] = current - quantity;
@@ -483,7 +478,7 @@ describe("submitOrder — idempotency key reused for a different request (ticket
 
     await expect(
       submitOrder({ itemId: ITEM_ID, quantity: 21, shippingAddress: DESTINATION, idempotencyKey: "reused-key-1" })
-    ).to.be.rejectedWith(IdempotencyKeyReusedError);
+    ).to.be.rejectedWith(exception.IdempotencyKeyReusedError);
   });
 
   it("rejects a key reused with a different shipping address", async () => {
@@ -510,7 +505,7 @@ describe("submitOrder — idempotency key reused for a different request (ticket
         shippingAddress: { latitude: 10, longitude: 10 },
         idempotencyKey: "reused-key-2",
       })
-    ).to.be.rejectedWith(IdempotencyKeyReusedError);
+    ).to.be.rejectedWith(exception.IdempotencyKeyReusedError);
   });
 
   it("rejects a key reused with a different itemId", async () => {
@@ -539,7 +534,7 @@ describe("submitOrder — idempotency key reused for a different request (ticket
 
     await expect(
       submitOrder({ itemId: otherItem.id, quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "reused-key-item" })
-    ).to.be.rejectedWith(IdempotencyKeyReusedError);
+    ).to.be.rejectedWith(exception.IdempotencyKeyReusedError);
   });
 
   it("still accepts a genuinely matching retry (same quantity and address) after a mismatch was rejected", async () => {
@@ -561,7 +556,7 @@ describe("submitOrder — idempotency key reused for a different request (ticket
 
     await expect(
       submitOrder({ itemId: ITEM_ID, quantity: 99, shippingAddress: DESTINATION, idempotencyKey: "reused-key-3" })
-    ).to.be.rejectedWith(IdempotencyKeyReusedError);
+    ).to.be.rejectedWith(exception.IdempotencyKeyReusedError);
 
     const matchingRetry = await submitOrder({ itemId: ITEM_ID, quantity: 20, shippingAddress: DESTINATION, idempotencyKey: "reused-key-3" });
 

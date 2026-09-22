@@ -1,6 +1,6 @@
 import { Context } from "koa";
 import getOrderService from "@application/orders/getOrderService";
-import { OrderNotFoundError } from "@domain/errors";
+import exception from "@domain/errors";
 import { Order } from "@domain/model/order";
 import { toDisplayAmount } from "@utils/money";
 
@@ -76,7 +76,7 @@ export async function getOrder(ctx: Context): Promise<void> {
 
   const order = await getOrderService.getOrder(orderNumber);
   if (!order) {
-    throw new OrderNotFoundError(orderNumber);
+    throw new exception.OrderNotFoundError(orderNumber);
   }
 
   ctx.status = 200;

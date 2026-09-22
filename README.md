@@ -28,12 +28,17 @@ Order management backend — Node.js + TypeScript + Koa + PostgreSQL.
 ```bash
 npm install         # postinstall runs `prisma generate`
 cp .env.example .env
-npm run db:up      # starts Postgres via docker-compose, on host port 5433
+npm run db:up      # starts Postgres via docker-compose, migrates, and seeds it (host port 5433)
 ```
 
 `docker-compose.yml` provisions two databases on first start: `orders` (dev) and `orders_test`
 (integration tests) — see `docker/init-test-db.sh`. Host port 5433 is used instead of the default
-5432 to avoid clashing with any other local Postgres instance.
+5432 to avoid clashing with any other local Postgres instance. `npm run db:up` waits for Postgres to
+report healthy, then runs `npm run db:seed` (`prisma migrate deploy` + the catalog item/6 warehouses
+seed, via `scripts/seedDb.ts`) against it — seeding is a one-time, idempotent step tied to starting
+the database, not to the app: data persists in the `pgdata` docker volume across every later
+`npm run dev`/`npm start`, and `npm run db:up` becomes a no-op on subsequent runs once the volume
+already has data.
 
 ## Run
 
@@ -41,9 +46,10 @@ npm run db:up      # starts Postgres via docker-compose, on host port 5433
 npm run dev     # start with auto-reload (tsx watch)
 ```
 
-On startup the service runs `prisma migrate deploy` and seeds the catalog item and 6 warehouses (if
-the `items`/`warehouses` tables are empty) before binding the port. The service listens on `PORT`
-(default `3000`). Verify it's up:
+On startup the service runs `prisma migrate deploy` (safe/idempotent on every boot, in case the
+schema changed since the database was last seeded) before binding the port — it does **not** seed;
+that only happens via `npm run db:up`/`npm run db:seed` against the database itself. The service
+listens on `PORT` (default `3000`). Verify it's up:
 
 ```bash
 curl http://localhost:3000/health
@@ -96,9 +102,11 @@ npm run typecheck
 prisma/
   schema.prisma              # Item/Warehouse/Inventory/Order/OrderAllocation/IdempotencyKey models
   migrations/                 # prisma migrate history (one folder per migration)
+scripts/
+  seedDb.ts                  # `npm run db:seed` — migrate + seed the database directly, once
 src/
   app.ts                    # builds the Koa app (no listen()) — importable by tests
-  server.ts                 # runtime entrypoint: prisma migrate deploy -> seed -> listen
+  server.ts                 # runtime entrypoint: prisma migrate deploy -> listen (no seeding)
   generated/prisma/           # `prisma generate` output (gitignored, TypeScript source)
   routes/                   # /health (unversioned), /v1/orders/*, /v1/items/* (versioned API)
   controllers/               # one file per controller — parse/validate -> call a service -> map to HTTP

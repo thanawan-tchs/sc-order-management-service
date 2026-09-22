@@ -32,7 +32,7 @@ export async function setup(): Promise<void> {
   }
 
   await execFileAsync("npx", ["prisma", "migrate", "deploy"], {
-    env: { ...process.env, DATABASE_URL: process.env.TEST_DATABASE_URL },
+    env: { ...process.env, DATABASE_URL: process.env.TEST_DATABASE_URL, CHECKPOINT_DISABLE: "1" },
   });
 }
 

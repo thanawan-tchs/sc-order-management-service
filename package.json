@@ -16,10 +16,11 @@
     "coverage": "npm run coverage:unit && npm run coverage:api",
     "coverage:unit": "c8 --reporter=text --reporter=html --report-dir=coverage/unit mocha",
     "coverage:api": "vitest run tests/integration --coverage",
-    "lint": "eslint src tests --ext .ts",
+    "lint": "eslint src tests scripts --ext .ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "db:up": "docker compose up -d db",
+    "db:up": "docker compose up -d --wait db && npm run db:seed",
     "db:down": "docker compose down",
+    "db:seed": "tsx scripts/seedDb.ts",
     "db:migrate:dev": "prisma migrate dev",
     "cache:up": "docker compose up -d redis"
   },

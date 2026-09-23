@@ -25,7 +25,15 @@ export const SHIPPING_RATE_PER_KG_KM = 1;
 
 export const CURRENCY: Currency = "USD";
 
-export const SEED_ITEMS = [{ name: "Standard Unit", price: 15000, currency: CURRENCY, weightKg: 0.365 }];
+export const SEED_ITEMS = [
+  {
+    id: "a5a59251-09c7-4435-966e-2992e842e7cf",
+    name: "Standard Unit",
+    price: 15000,
+    currency: CURRENCY,
+    weightKg: 0.365,
+  },
+];
 
 export const SEED_WAREHOUSES = [
   { name: "Los Angeles", latitude: 33.9425, longitude: -118.408056, stock: 355 },

@@ -16,7 +16,7 @@ async function seedItems(prisma: PrismaClient): Promise<string> {
 
   const [item] = SEED_ITEMS;
   const created = await prisma.item.create({
-    data: { name: item.name, price: item.price, currency: item.currency, weightKg: item.weightKg },
+    data: { id: item.id, name: item.name, price: item.price, currency: item.currency, weightKg: item.weightKg },
   });
   return created.id;
 }

@@ -118,7 +118,7 @@ src/
   repositories/               # itemRepository, warehouseRepository, orderRepository
   infrastructure/
     db/                       # Prisma Client (adapter-pg), seed, withTransaction()
-    gracefulShutdown.ts       # SIGTERM/SIGINT handler
+    closeDependencies.ts      # closes Prisma + Redis on shutdown (signal handling is a library)
   observability/              # logger.ts (pino)
   middleware/                 # errorHandler, validateBody, requestContext
   config/                     # environment/config loading, seed data
@@ -178,8 +178,14 @@ express (the `order_number_seq` sequence read, and test-only `TRUNCATE`/`ALTER S
   adapter from `config`'s pool size/timeouts — ticket 17), `seed.ts`, and `transaction.ts`'s
   `withTransaction()`, a thin wrapper around Prisma's own interactive `$transaction()` (used by
   ticket 11; commit/rollback are Prisma's guarantee, not hand-rolled `BEGIN`/`COMMIT`/`ROLLBACK`).
-- `gracefulShutdown.ts` (ticket 17) — dependency-injected `SIGTERM`/`SIGINT` handler (`server.close`
-  → `closePrisma` → `exit(0)`, or force-exit `1` on timeout) — see `server.ts`.
+- `closeDependencies.ts` (ticket 17) — the one piece of shutdown logic that's still our own code:
+  closes Prisma (`closePrisma`) then Redis (`closeRedisClient`), each wrapped in its own try/catch
+  so one failing to close never blocks the other. Kept as a small, dependency-injected, unit-tested
+  function. Signal listening, refusing new connections, and the actual `process.exit()` are handled
+  by the `http-graceful-shutdown` library (`gracefulShutdown(server, { timeout, onShutdown, finally })`
+  in `server.ts`, called right after `app.listen()`) — it correctly force-closes idle keep-alive
+  sockets after `timeout`, which a plain `server.close()` never does on its own (it can hang
+  indefinitely waiting for every open socket to close naturally).
 
 **`observability/`** (ticket 17) — `logger.ts`, a shared pino instance.
 
@@ -325,6 +331,4 @@ first in `app.ts` so Koa's onion model wraps every other middleware inside its `
 - enhance security 
   - middleware verifyAuth
   - verify api policy
-- enhance error handling format 
-  - make it more simple to add new/use errorCode
 

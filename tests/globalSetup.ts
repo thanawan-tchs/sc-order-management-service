@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import EmbeddedPostgres from "embedded-postgres";
-
-const execFileAsync = promisify(execFile);
+import { migrate } from "../src/infrastructure/db/migrate";
 
 const PORT = 54329;
 const USER = "app";
@@ -31,9 +28,8 @@ export async function setup(): Promise<void> {
     process.env.TEST_DATABASE_URL = `postgres://${USER}:${PASSWORD}@localhost:${PORT}/${DATABASE}`;
   }
 
-  await execFileAsync("npx", ["prisma", "migrate", "deploy"], {
-    env: { ...process.env, DATABASE_URL: process.env.TEST_DATABASE_URL, CHECKPOINT_DISABLE: "1" },
-  });
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  await migrate();
 }
 
 export async function teardown(): Promise<void> {

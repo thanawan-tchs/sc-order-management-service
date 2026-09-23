@@ -137,11 +137,19 @@ redacts `databaseUrl`/`*.password`). `middleware/requestContext.ts` logs one str
 completed" line per request, using the matched route *pattern* (`ctx.routerPath`), not the literal
 request path, so the log field stays low-cardinality.
 
-**Graceful shutdown** (`infrastructure/gracefulShutdown.ts`) is a pure, dependency-injected
-function (`createShutdownHandler({ server, closePool, exit, logger, timeoutMs })` — `closePool` is
-passed `closePrisma` from `prismaClient.ts` at the `server.ts` call site; the dependency name
-itself stayed generic) rather than inline logic in `server.ts`, specifically so it's unit-testable
-without a real server/process.
+**Graceful shutdown** is delegated to the `http-graceful-shutdown` library rather than hand-rolled:
+`server.ts` calls `gracefulShutdown(server, { timeout, onShutdown, finally })` right after
+`app.listen()`. The library owns signal listening (`SIGINT`/`SIGTERM`), refusing new connections,
+sending `Connection: close` to in-flight requests, force-destroying idle sockets once `timeout`
+elapses, and the final `process.exit()` (0 on a clean shutdown, 1 on timeout/failure, and a repeat
+signal during shutdown forces an immediate exit) — a plain `server.close()` never resolves while an
+idle keep-alive connection is open, which is exactly the class of bug this avoids. Our own code
+only supplies the `onShutdown` hook: `infrastructure/closeDependencies.ts`'s `closeDependencies()`
+closes the Prisma client (`closePrisma`) then the Redis client (`closeRedisClient`), each in its
+own try/catch so one failing to close never blocks the other or hangs shutdown — this is the one
+piece kept as a small, pure, dependency-injected function (unlike the old
+`infrastructure/gracefulShutdown.ts`, which no longer exists) specifically so the close-ordering
+and error-isolation behavior stays unit-testable without a real server/process.
 
 ## Testing conventions
 

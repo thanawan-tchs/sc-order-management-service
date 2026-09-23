@@ -1,9 +1,10 @@
+import gracefulShutdown from "http-graceful-shutdown";
 import { createApp } from "./app";
 import { config } from "./config";
 import { closeRedisClient, connectRedisClient } from "./infrastructure/cache/redisClient";
+import { closeDependencies } from "./infrastructure/closeDependencies";
 import { migrate } from "./infrastructure/db/migrate";
 import { closePrisma, connectPrisma } from "./infrastructure/db/prismaClient";
-import { createShutdownHandler } from "./infrastructure/gracefulShutdown";
 import { logger } from "./observability/logger";
 
 async function main(): Promise<void> {
@@ -19,17 +20,11 @@ async function main(): Promise<void> {
   server.requestTimeout = config.requestTimeoutMs;
   server.headersTimeout = config.headersTimeoutMs;
 
-  const shutdown = createShutdownHandler({
-    server,
-    closePool: closePrisma,
-    closeCache: closeRedisClient,
-    exit: (code) => process.exit(code),
-    logger,
-    timeoutMs: config.shutdownTimeoutMs,
+  gracefulShutdown(server, {
+    timeout: config.shutdownTimeoutMs,
+    onShutdown: () => closeDependencies({ closePool: closePrisma, closeCache: closeRedisClient, logger }),
+    finally: (signal) => logger.info({ signal }, "shutting down"),
   });
-
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((error) => {
